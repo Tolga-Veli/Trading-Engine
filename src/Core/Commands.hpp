@@ -8,7 +8,7 @@ namespace ob::engine {
 enum class CommandType { None = 0, Add = 1, Modify, Cancel };
 
 // Holds structs with command info
-namespace cmd {
+namespace CommandTypes {
 struct AddOrder {
   ClientID clientID;
   ClientOrderID clientOrderID;
@@ -29,10 +29,17 @@ struct ModifyOrder {
 struct CancelOrder {
   OrderID orderID;
 };
-} // namespace cmd
+
+struct RequestSnapshot {
+  std::uint32_t depth;
+};
+
+} // namespace CommandTypes
 //
 
-using Command = std::variant<std::monostate, cmd::AddOrder, cmd::ModifyOrder,
-                             cmd::CancelOrder>;
+using Command =
+    std::variant<std::monostate, CommandTypes::AddOrder,
+                 CommandTypes::ModifyOrder, CommandTypes::CancelOrder,
+                 CommandTypes::RequestSnapshot>;
 
 } // namespace ob::engine

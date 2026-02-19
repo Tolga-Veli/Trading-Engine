@@ -6,24 +6,20 @@
 #include <unordered_map>
 #include <variant>
 
-#include "Commands.hpp"
-#include "MatchingStrategy.hpp"
-#include "OrderBookQuery.hpp"
-#include "OrderPointer.hpp"
+#include "Core/Commands.hpp"
+#include "Core/Order.hpp"
+#include "EventQueue.hpp"
+#include "Matching/MatchingStrategy.hpp"
 
 namespace ob::engine {
-class OrderBookQuery;
-
 class OrderBook {
 public:
-  friend class OrderBookQuery;
-
-  explicit OrderBook(std::pmr::monotonic_buffer_resource &resource,
+  explicit OrderBook(EventQueue &queue,
                      std::unique_ptr<IMatchingStrategy> strategy =
                          std::make_unique<FIFO_Matching>())
-      : m_Resource(resource), m_Bids(&resource), m_Asks(&resource),
-        m_Orders(&resource), m_QueryAPI(*this),
-        m_MatchingStrategy(std::move(strategy)) {}
+      : m_PoolResource(), m_Bids(&m_PoolResource), m_Asks(&m_PoolResource),
+        m_Orders(&m_PoolResource), m_MatchingStrategy(std::move(strategy)),
+        m_EventQueue(queue) {}
 
   ~OrderBook() {}
 
@@ -36,9 +32,20 @@ public:
     std::visit([this](auto &&c) { Handle(c); }, cmd);
   }
 
-  void Shutdown() noexcept { m_Running = false; };
+  std::optional<Order> FindOrder(const OrderID &orderID) const noexcept;
 
-  const OrderBookQuery &GetQueryAPI() const { return m_QueryAPI; }
+  Order *GetBestBid() noexcept;
+  Order *GetBestAsk() noexcept;
+
+  Quantity GetBidVolumeAtPrice(Price price) const noexcept;
+  Quantity GetAskVolumeAtPrice(Price price) const noexcept;
+
+  std::size_t GetBidsDepth() const noexcept;
+  std::size_t GetAsksDepth() const noexcept;
+
+  engine::OrderBookSnapshot GetSnapshot(uint32_t depth) const noexcept;
+
+  void PrintOrderBook() const;
 
   void AddOrder(const ClientID &clientID, const ClientOrderID &clientOrderID,
                 const Price &price, const Quantity &quantity, const Side &side,
@@ -51,27 +58,39 @@ public:
   void CancelOrder(const OrderID &orderID);
 
 private:
-  bool m_Running = true;
+  EventQueue &m_EventQueue;
 
-  std::pmr::monotonic_buffer_resource &m_Resource;
-
+  std::pmr::unsynchronized_pool_resource m_PoolResource;
   std::pmr::map<Price, std::pmr::list<Order>, std::greater<Price>> m_Bids;
   std::pmr::map<Price, std::pmr::list<Order>, std::less<Price>> m_Asks;
+
+  struct OrderPointer {
+    std::pmr::list<Order>::iterator list_iterator;
+    std::pmr::map<Price, std::pmr::list<Order>>::iterator map_iterator;
+  };
   std::pmr::unordered_map<OrderID, OrderPointer> m_Orders;
 
-  OrderBookQuery m_QueryAPI;
   std::unique_ptr<IMatchingStrategy> m_MatchingStrategy;
 
-  void Execute(const MatchResult &result);
-
   void Handle(const std::monostate &empty) {}
-  void Handle(const cmd::AddOrder &add) {
+
+  void Handle(const CommandTypes::AddOrder &add) {
     AddOrder(add.clientID, add.clientOrderID, add.price, add.quantity, add.side,
              add.order_type, add.tif, add.flags);
   }
-  void Handle(const cmd::ModifyOrder &modify) {
+
+  void Handle(const CommandTypes::ModifyOrder &modify) {
     ModifyOrder(modify.orderID, modify.new_price, modify.new_quantity);
   }
-  void Handle(const cmd::CancelOrder &cancel) { CancelOrder(cancel.orderID); }
+
+  void Handle(const CommandTypes::CancelOrder &cancel) {
+    CancelOrder(cancel.orderID);
+  }
+
+  void Handle(const CommandTypes::RequestSnapshot &snapshot) {
+    auto data = GetSnapshot(snapshot.depth);
+    m_EventQueue.push(
+        Event{EventTypes::SnapshotRequestAccepted{std::move(data)}});
+  }
 };
 } // namespace ob::engine

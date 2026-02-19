@@ -1,24 +1,15 @@
 #pragma once
 
-#include "ThreadSafeQueue.hpp"
+#include "OrderBookSnapshot.hpp"
 #include "globals.hpp"
 
 #include <variant>
 
 namespace ob::engine {
-enum class EventType {
-  None = 0,
-  OrderAccepted = 1,
-  OrderRejected,
-  ModifyAccepted,
-  ModifyRejected,
-  CancelAccepted,
-  CancelRejected
-};
 
 enum class ErrorCode { None = 0, InvalidRequest = 1 };
 
-namespace Events {
+namespace EventTypes {
 struct OrderAccepted {
   ClientID clientID;
   ClientOrderID clientOrderID;
@@ -54,23 +45,21 @@ struct CancelRejected {
   ClientOrderID clientOrderID;
   ErrorCode errorCode;
 };
-} // namespace Events
 
-using Event =
-    std::variant<std::monostate, Events::OrderAccepted, Events::OrderRejected,
-                 Events::ModifyAccepted, Events::ModifyRejected,
-                 Events::CancelAccepted, Events::CancelRejected>;
-
-class EventHandler {
-public:
-  EventHandler();
-  ~EventHandler();
-
-  template <class T> void push(T &&event) {
-    m_Queue.push(std::forward<T>(event));
-  }
-
-private:
-  data::ThreadSafeQueue<Event> m_Queue;
+struct SnapshotRequestAccepted {
+  OrderBookSnapshot snapshot;
 };
+
+struct SnapshotRequestRejected {
+  ErrorCode errorCode;
+};
+
+} // namespace EventTypes
+
+using Event = std::variant<
+    std::monostate, EventTypes::OrderAccepted, EventTypes::OrderRejected,
+    EventTypes::ModifyAccepted, EventTypes::ModifyRejected,
+    EventTypes::CancelAccepted, EventTypes::CancelRejected,
+    EventTypes::SnapshotRequestAccepted, EventTypes::SnapshotRequestRejected>;
+
 } // namespace ob::engine
