@@ -1,21 +1,32 @@
 #pragma once
 
+#include <unordered_map>
+
 #include "Order.hpp"
 #include "Trade.hpp"
 
 namespace ob::engine {
 
-class OrderBook;
+class OrderBookQuery;
+
+struct MatchResult {
+  std::vector<Trade> trades;
+  std::vector<OrderID> cancelledOrderIDs;
+  std::unordered_map<OrderID, Quantity> partialFills;
+};
 
 class IMatchingStrategy {
 public:
   virtual ~IMatchingStrategy() = default;
-  virtual std::vector<Trade> Match(Order &order, OrderBook &book) = 0;
-  static uint32_t m_Counter;
+  [[nodiscard]] virtual MatchResult Match(const Order &incoming_order,
+                                          const OrderBookQuery &book) const = 0;
+
+  static std::size_t m_Counter;
 };
 
 class FIFO_Matching : public IMatchingStrategy {
 public:
-  std::vector<Trade> Match(Order &order, OrderBook &book) override;
+  [[nodiscard]] MatchResult Match(const Order &incoming_order,
+                                  const OrderBookQuery &book) const override;
 };
 } // namespace ob::engine

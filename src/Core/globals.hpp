@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cassert>
+// #include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
@@ -41,14 +41,6 @@ enum class Flags : uint8_t {
   Hidden = 1,
   Iceberg = 1 << 1,
   PostOnly = 1 << 2
-};
-
-enum class OrderState {
-  Active = 0,
-  PartiallyFilled,
-  Filled,
-  Cancelled,
-  Rejected
 };
 
 inline Flags operator|(Flags a, Flags b) {
@@ -131,22 +123,6 @@ inline std::string to_string(Flags flag) {
     str.pop_back();
 
   return str;
-}
-
-inline std::string_view to_string(OrderState order_state) {
-  switch (order_state) {
-  case OrderState::Active:
-    return "Active";
-  case OrderState::PartiallyFilled:
-    return "PartiallyFilled";
-  case OrderState::Filled:
-    return "Filled";
-  case OrderState::Cancelled:
-    return "Cancelled";
-  case OrderState::Rejected:
-    return "Rejected";
-  }
-  return "";
 }
 
 inline constexpr std::string_view to_string(MatchType matchType) {

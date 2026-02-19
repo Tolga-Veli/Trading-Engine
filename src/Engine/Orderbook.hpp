@@ -3,27 +3,32 @@
 #include <list>
 #include <map>
 #include <memory_resource>
-#include <optional>
 #include <unordered_map>
 #include <variant>
 
 #include "Commands.hpp"
 #include "MatchingStrategy.hpp"
-#include "OrderBookSnapshot.hpp"
+#include "OrderBookQuery.hpp"
+#include "OrderPointer.hpp"
 
 namespace ob::engine {
-static constexpr std::size_t MEMORY_BUFFER_SIZE = 64 * (1 << 20); // 64 MiB
+class OrderBookQuery;
+
 class OrderBook {
 public:
-  explicit OrderBook(std::unique_ptr<IMatchingStrategy> strategy =
+  friend class OrderBookQuery;
+
+  explicit OrderBook(std::pmr::monotonic_buffer_resource &resource,
+                     std::unique_ptr<IMatchingStrategy> strategy =
                          std::make_unique<FIFO_Matching>())
-      : m_Bids(&m_Resource), m_Asks(&m_Resource), m_Orders(&m_Resource),
-        m_MatchingEngine(std::move(strategy)) {}
+      : m_Resource(resource), m_Bids(&resource), m_Asks(&resource),
+        m_Orders(&resource), m_QueryAPI(*this),
+        m_MatchingStrategy(std::move(strategy)) {}
+
   ~OrderBook() {}
 
   OrderBook(const OrderBook &) = delete;
   OrderBook &operator=(const OrderBook &) = delete;
-
   OrderBook(OrderBook &&) = delete;
   OrderBook &operator=(OrderBook &&) = delete;
 
@@ -33,43 +38,40 @@ public:
 
   void Shutdown() noexcept { m_Running = false; };
 
-  bool HasOrders() const noexcept;
-  std::optional<Order> GetOrder(OrderID orderID) const;
+  const OrderBookQuery &GetQueryAPI() const { return m_QueryAPI; }
 
-  Order *GetBestBid();
-  Order *GetBestAsk();
-  Quantity GetBidVolumeAtPrice(Price price) const;
-  Quantity GetAskVolumeAtPrice(Price price) const;
+  void AddOrder(const ClientID &clientID, const ClientOrderID &clientOrderID,
+                const Price &price, const Quantity &quantity, const Side &side,
+                const OrderType &order_type, const TimeInForce &tif,
+                const Flags &flags);
 
-  OrderBookSnapshot GetSnapshot(uint32_t depth) const;
+  void ModifyOrder(const OrderID &orderID, const Price &new_price,
+                   const Quantity &new_quantity);
 
-  const std::vector<Trade> &GetTradeHistory() const { return m_Trades; };
-
-  std::size_t GetBidsDepth() const { return m_Bids.size(); }
-  std::size_t GetAsksDepth() const { return m_Asks.size(); }
-
-  void PrintOrderBook() const;
+  void CancelOrder(const OrderID &orderID);
 
 private:
-  struct OrderPointer {
-    std::pmr::list<Order>::iterator iter;
-    std::pmr::list<Order> *list_ptr;
-  };
-
   bool m_Running = true;
-  std::pmr::monotonic_buffer_resource m_Resource{MEMORY_BUFFER_SIZE};
+
+  std::pmr::monotonic_buffer_resource &m_Resource;
+
   std::pmr::map<Price, std::pmr::list<Order>, std::greater<Price>> m_Bids;
   std::pmr::map<Price, std::pmr::list<Order>, std::less<Price>> m_Asks;
   std::pmr::unordered_map<OrderID, OrderPointer> m_Orders;
-  std::unique_ptr<IMatchingStrategy> m_MatchingEngine;
-  std::vector<Trade> m_Trades;
 
-  // Handle the types of commands from the command queue
+  OrderBookQuery m_QueryAPI;
+  std::unique_ptr<IMatchingStrategy> m_MatchingStrategy;
+
+  void Execute(const MatchResult &result);
+
   void Handle(const std::monostate &empty) {}
-  void Handle(const cmd::AddOrder &add);
-  void Handle(const cmd::ModifyOrder &modify);
-  void Handle(const cmd::CancelOrder &cancel);
-
-  void MatchIncomingOrders(Order &order);
+  void Handle(const cmd::AddOrder &add) {
+    AddOrder(add.clientID, add.clientOrderID, add.price, add.quantity, add.side,
+             add.order_type, add.tif, add.flags);
+  }
+  void Handle(const cmd::ModifyOrder &modify) {
+    ModifyOrder(modify.orderID, modify.new_price, modify.new_quantity);
+  }
+  void Handle(const cmd::CancelOrder &cancel) { CancelOrder(cancel.orderID); }
 };
 } // namespace ob::engine

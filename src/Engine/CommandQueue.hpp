@@ -11,6 +11,7 @@ class CommandQueue {
 public:
   explicit CommandQueue(OrderBook &orderbook)
       : m_Orderbook(orderbook), m_Thread(&CommandQueue::ProcessLoop, this) {}
+
   ~CommandQueue() {
     m_Running.store(false, std::memory_order_relaxed);
     m_Queue.close();
@@ -58,4 +59,4 @@ private:
 
   void Dispatch(const Command &cmd) { m_Orderbook.Apply(cmd); }
 };
-}; // namespace ob::engine
+} // namespace ob::engine

@@ -20,39 +20,39 @@ enum class ErrorCode { None = 0, InvalidRequest = 1 };
 
 namespace Events {
 struct OrderAccepted {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  OrderID orderID{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  OrderID orderID;
 };
 
 struct OrderRejected {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  ErrorCode errorCode{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  ErrorCode errorCode;
 };
 
 struct ModifyAccepted {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  OrderID orderID{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  OrderID orderID;
 };
 
 struct ModifyRejected {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  ErrorCode errorCode{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  ErrorCode errorCode;
 };
 
 struct CancelAccepted {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  OrderID orderID{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  OrderID orderID;
 };
 
 struct CancelRejected {
-  ClientID clientID{};
-  ClientOrderID clientOrderID{};
-  ErrorCode errorCode{};
+  ClientID clientID;
+  ClientOrderID clientOrderID;
+  ErrorCode errorCode;
 };
 } // namespace Events
 
@@ -72,17 +72,5 @@ public:
 
 private:
   data::ThreadSafeQueue<Event> m_Queue;
-
-  /*    void Apply(const Event &event) {
-      std::visit([this](auto &&e) { Handle(e); }, event.payload);
-    }
-
-    void Handle(std::monostate) {}
-    void Handle(const Events::OrderAccepted &event) {}
-    void Handle(const Events::OrderRejected &event);
-    void Handle(const Events::ModifyAccepted &event);
-    void Handle(const Events::ModifyRejected &event);
-    void Handle(const Events::CancelAccepted &event);
-    void Handle(const Events::CancelRejected &event);*/
 };
 } // namespace ob::engine

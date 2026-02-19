@@ -8,13 +8,12 @@ class Order {
 public:
   Order() = delete;
   Order(OrderID orderID, ClientID clientID, Price price, Quantity quantity,
-        Side side, OrderType order_type, TimeInForce tif, Flags flag,
-        OrderState order_state = OrderState::Active) noexcept
+        Side side, OrderType order_type, TimeInForce tif, Flags flag) noexcept
       : m_OrderID(orderID), m_ClientID(clientID),
         m_Timestamp(core::GetCurrentTime()), m_Price(price),
         m_IntialQuantity(quantity), m_RemainingQuantity(quantity), m_Side(side),
-        m_OrderType(order_type), m_TimeInForce(tif), m_Flags(flag),
-        m_OrderState(order_state) {}
+        m_OrderType(order_type), m_TimeInForce(tif), m_Flags(flag) {}
+
   ~Order() noexcept = default;
 
   const OrderID &GetOrderID() const noexcept { return m_OrderID; }
@@ -63,8 +62,7 @@ public:
               << " , Side: " << core::to_string(m_Side)
               << " , Order Type: " << core::to_string(m_OrderType)
               << " , Time in Force: " << core::to_string(m_TimeInForce)
-              << " , Flags: " << core::to_string(m_Flags)
-              << " , OrderState: " << core::to_string(m_OrderState) << '\n';
+              << " , Flags: " << core::to_string(m_Flags) << '\n';
   }
 
 private:
@@ -73,10 +71,9 @@ private:
   Price m_Price;
   Quantity m_IntialQuantity, m_RemainingQuantity;
   Time m_Timestamp;
-  Side m_Side;
-  OrderType m_OrderType;
-  TimeInForce m_TimeInForce;
-  Flags m_Flags;
-  OrderState m_OrderState;
+  const Side m_Side;
+  const OrderType m_OrderType;
+  const TimeInForce m_TimeInForce;
+  const Flags m_Flags;
 };
 } // namespace ob

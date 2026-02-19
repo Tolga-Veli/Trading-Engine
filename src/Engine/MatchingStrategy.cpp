@@ -1,11 +1,13 @@
 #include "MatchingStrategy.hpp"
-#include "Orderbook.hpp"
+#include "OrderbookQuery.hpp"
 
 namespace ob::engine {
-uint32_t IMatchingStrategy::m_Counter = 0;
+static std::size_t m_Counter = 0;
 
-std::vector<Trade> FIFO_Matching::Match(Order &order, OrderBook &book) {
-  std::vector<Trade> trades;
+[[nodiscard]] MatchResult
+FIFO_Matching::Match(const Order &incoming_order,
+                     const OrderBookQuery &book) const {
+  MatchResult result;
   while (true) {
     if (!book.HasOrders())
       break;
@@ -21,20 +23,19 @@ std::vector<Trade> FIFO_Matching::Match(Order &order, OrderBook &book) {
     Quantity quantity =
         std::min(bid->GetRemainingQuantity(), ask->GetRemainingQuantity());
 
-    bid->Fill(quantity);
-    ask->Fill(quantity);
+    result.partialFills[bid->GetOrderID()] += quantity;
+    result.partialFills[ask->GetOrderID()] += quantity;
 
     if (bid->isFilled())
-      book.CancelOrder(bid->GetOrderID());
+      result.cancelledOrderIDs.push_back(bid->GetOrderID());
     if (ask->isFilled())
-      book.CancelOrder(ask->GetOrderID());
+      result.cancelledOrderIDs.push_back(ask->GetOrderID());
 
-    trades.emplace_back(std::move(Trade{
+    result.trades.emplace_back(std::move(Trade{
         m_Counter++, bid->GetOrderID(), ask->GetOrderID(), bid->GetPrice(),
         ask->GetPrice(), quantity, MatchType::Standard}));
   }
 
-  // book.RemoveFillAndKill();
-  return trades;
+  return result;
 }
 } // namespace ob::engine

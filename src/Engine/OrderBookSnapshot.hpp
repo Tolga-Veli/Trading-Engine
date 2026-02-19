@@ -9,5 +9,4 @@ struct OrderBookSnapshot {
   std::vector<std::pair<Price, Quantity>> bids, asks;
   std::vector<Trade> trades;
 };
-
-}; // namespace ob::engine
+} // namespace ob::engine
