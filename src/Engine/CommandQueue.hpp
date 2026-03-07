@@ -13,8 +13,8 @@ public:
   explicit CommandQueue(OrderBook &orderbook) : m_Orderbook(orderbook) {}
 
   ~CommandQueue() {
-    m_Thread.request_stop();
     m_Queue.close();
+    m_Thread.request_stop();
   }
 
   CommandQueue(const CommandQueue &) = delete;

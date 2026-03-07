@@ -1,7 +1,7 @@
 #pragma once
 
+#include "Logging.hpp"
 #include "globals.hpp"
-#include <iostream>
 
 namespace ob {
 class Order {
@@ -34,7 +34,7 @@ public:
   void ModifyOrder(Price new_price, Quantity new_quantity) {
     const Quantity filled = GetFilledQuantity();
     if (filled > new_quantity)
-      throw std::logic_error(
+      HERMES_FATAL(
           "Modified quantity is less than the already filled quantity.");
 
     if (new_price != m_Price || new_quantity > m_IntialQuantity)
@@ -47,22 +47,20 @@ public:
 
   void Fill(Quantity quantity) {
     if (quantity > m_RemainingQuantity)
-      throw std::logic_error(std::format(
-          "Order ({}) cannot be filled for more than its capcity.", m_OrderID));
+      HERMES_FATAL("Order ({}) cannot be filled for more than its capcity.",
+                   m_OrderID);
 
     m_RemainingQuantity -= quantity;
   }
 
-  void info() const {
-    std::cout << "OrderID: " << m_OrderID << " , ClientID: " << m_ClientID
-              << " , Price: " << m_Price
-              << " , Initial Quantity: " << m_IntialQuantity
-              << " , Remaining Quantity: " << m_RemainingQuantity
-              << " , Time: " << m_Timestamp
-              << " , Side: " << core::to_string(m_Side)
-              << " , Order Type: " << core::to_string(m_OrderType)
-              << " , Time in Force: " << core::to_string(m_TimeInForce)
-              << " , Flags: " << core::to_string(m_Flags) << '\n';
+  void log() const {
+    HERMES_INFO("Order ID: {}, ClientID: {}, Price: {}, InitialQuantity: {}, "
+                "RemainingQuantity: {}, Time: {}, Side: {}, Order Type: {}, "
+                "Time in Force: {}, Flags:{} \n",
+                m_OrderID, m_ClientID, m_Price, m_IntialQuantity,
+                m_RemainingQuantity, m_Timestamp, core::to_string(m_Side),
+                core::to_string(m_OrderType), core::to_string(m_TimeInForce),
+                core::to_string(m_Flags));
   }
 
 private:

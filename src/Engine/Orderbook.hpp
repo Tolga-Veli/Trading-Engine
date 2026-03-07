@@ -15,11 +15,12 @@ namespace ob::engine {
 class OrderBook {
 public:
   explicit OrderBook(EventQueue &queue,
+                     std::pmr::unsynchronized_pool_resource &resource,
                      std::unique_ptr<IMatchingStrategy> strategy =
                          std::make_unique<FIFO_Matching>())
-      : m_PoolResource(), m_Bids(&m_PoolResource), m_Asks(&m_PoolResource),
-        m_Orders(&m_PoolResource), m_MatchingStrategy(std::move(strategy)),
-        m_EventQueue(queue) {}
+      : m_PoolResource(resource), m_Bids(&m_PoolResource),
+        m_Asks(&m_PoolResource), m_Orders(&m_PoolResource), m_EventQueue(queue),
+        m_MatchingStrategy(std::move(strategy)) {}
 
   ~OrderBook() {}
 
@@ -58,18 +59,17 @@ public:
   void CancelOrder(const OrderID &orderID);
 
 private:
-  EventQueue &m_EventQueue;
-
-  std::pmr::unsynchronized_pool_resource m_PoolResource;
-  std::pmr::map<Price, std::pmr::list<Order>, std::greater<Price>> m_Bids;
-  std::pmr::map<Price, std::pmr::list<Order>, std::less<Price>> m_Asks;
-
   struct OrderPointer {
     std::pmr::list<Order>::iterator list_iterator;
     std::pmr::map<Price, std::pmr::list<Order>>::iterator map_iterator;
   };
+
+  std::pmr::unsynchronized_pool_resource &m_PoolResource;
+  std::pmr::map<Price, std::pmr::list<Order>, std::greater<Price>> m_Bids;
+  std::pmr::map<Price, std::pmr::list<Order>, std::less<Price>> m_Asks;
   std::pmr::unordered_map<OrderID, OrderPointer> m_Orders;
 
+  EventQueue &m_EventQueue;
   std::unique_ptr<IMatchingStrategy> m_MatchingStrategy;
 
   void Handle(const std::monostate &empty) {}

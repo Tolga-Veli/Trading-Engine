@@ -1,8 +1,7 @@
 #pragma once
 
+#include "Logging.hpp"
 #include "globals.hpp"
-
-#include <iostream>
 
 namespace ob {
 class Trade {
@@ -23,20 +22,19 @@ public:
   Quantity GetQuantity() const noexcept { return m_Quantity; }
   MatchType GetMatchType() const noexcept { return m_MatchType; }
 
-  void info() const {
-    std::cout << "TradeID: " << m_TradeID << ", bidOrderID: " << m_BidOrderID
-              << ", askOrderID: " << m_AskOrderID
-              << ", Timestamp: " << m_Timestamp << ", bidPrice: " << m_BidPrice
-              << ",askPrice:  " << m_AskPrice << ", Quantity: " << m_Quantity
-              << ", Match Type: " << core::to_string(m_MatchType) << '\n';
+  void log() const {
+    HERMES_INFO("TradeID: {}, bidOrderID: {}, askOrderID: {}, Timestamp: {}, "
+                "askPrice: {}, Quantity: {}, MatchType: {}\n",
+                m_TradeID, m_BidOrderID, m_AskOrderID, m_Timestamp, m_BidPrice,
+                m_AskPrice, m_Quantity, core::to_string(m_MatchType));
   }
 
 private:
-  TradeID m_TradeID;
-  OrderID m_BidOrderID, m_AskOrderID;
-  Time m_Timestamp;
-  Price m_BidPrice, m_AskPrice;
-  Quantity m_Quantity;
-  MatchType m_MatchType;
+  const TradeID m_TradeID;
+  const OrderID m_BidOrderID, m_AskOrderID;
+  const Time m_Timestamp;
+  const Price m_BidPrice, m_AskPrice;
+  const Quantity m_Quantity;
+  const MatchType m_MatchType;
 };
 } // namespace ob

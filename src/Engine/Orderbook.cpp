@@ -158,8 +158,8 @@ OrderBookSnapshot OrderBook::GetSnapshot(uint32_t depth) const noexcept {
 
 void OrderBook::PrintOrderBook() const {
   std::cout << "------------------\n";
-  for (const auto &[orderID, OrderPointer] : m_Orders)
-    OrderPointer.list_iterator->info();
+  for (const auto &[_, op] : m_Orders)
+    op.list_iterator->log();
   std::cout << "------------------\n";
 }
 } // namespace ob::engine

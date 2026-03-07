@@ -16,12 +16,14 @@ public:
 
   void Start() { m_CommandQueue.Start(); }
 
-  engine::EventQueue &GetEventQueue() noexcept { return m_EventQueue; }
-  engine::CommandQueue &GetCommandQueue() noexcept { return m_CommandQueue; }
+  EventQueue &GetEventQueue() noexcept { return m_EventQueue; }
+  CommandQueue &GetCommandQueue() noexcept { return m_CommandQueue; }
 
 private:
-  engine::EventQueue m_EventQueue;
-  engine::OrderBook m_Orderbook;
-  engine::CommandQueue m_CommandQueue;
+  std::pmr::unsynchronized_pool_resource m_PoolResource;
+
+  EventQueue m_EventQueue;
+  OrderBook m_Orderbook;
+  CommandQueue m_CommandQueue;
 };
 } // namespace ob::engine

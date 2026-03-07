@@ -1,6 +1,5 @@
 #pragma once
 
-// #include <cassert>
 #include <chrono>
 #include <cstdint>
 #include <iomanip>
@@ -9,12 +8,20 @@
 #include <string_view>
 
 namespace ob {
-using ClientID = uint64_t;
-using OrderID = uint64_t;
-using ClientOrderID = uint64_t;
-using TradeID = uint64_t;
-using Price = int64_t; // in 1/10th of a cent therefore  1000 = 1$
-using Quantity = uint64_t;
+using i32 = std::int16_t;
+using i64 = std::int64_t;
+
+using u8 = std::uint8_t;
+using u16 = std::uint16_t;
+using u32 = std::uint32_t;
+using u64 = std::uint64_t;
+
+using ClientID = u64;
+using OrderID = u64;
+using ClientOrderID = u64;
+using TradeID = u64;
+using Price = u64; // in 1/10th of a cent therefore  1000 = 1$
+using Quantity = u64;
 using Time = std::chrono::nanoseconds;
 
 enum class Side { Buy = 0, Sell };
@@ -36,7 +43,7 @@ enum class MatchType {
   Auction,
 };
 
-enum class Flags : uint8_t {
+enum class Flags : u8 {
   None = 0,
   Hidden = 1,
   Iceberg = 1 << 1,

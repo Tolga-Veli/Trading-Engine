@@ -35,7 +35,6 @@ struct RequestSnapshot {
 };
 
 } // namespace CommandTypes
-//
 
 using Command =
     std::variant<std::monostate, CommandTypes::AddOrder,

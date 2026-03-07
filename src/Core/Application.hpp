@@ -9,6 +9,10 @@ public:
   Application();
   ~Application();
 
+  static std::unique_ptr<Application> Create() {
+    return std::make_unique<Application>();
+  }
+
   void Run();
 
 private:
