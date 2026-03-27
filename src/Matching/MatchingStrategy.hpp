@@ -4,18 +4,12 @@
 
 namespace ob::engine {
 
-class OrderBook;
+template <class T> class OrderBook;
 
-class IMatchingStrategy {
+class FIFO_Matching {
 public:
-  virtual ~IMatchingStrategy() = default;
-  virtual void Match(OrderBook &book) = 0;
-};
+  void Match(OrderBook<FIFO_Matching> &book);
 
-class FIFO_Matching : public IMatchingStrategy {
-public:
-  void Match(OrderBook &book) override;
-
-  static std::uint64_t m_Counter;
+  inline static std::uint64_t m_Counter = 0;
 };
 } // namespace ob::engine

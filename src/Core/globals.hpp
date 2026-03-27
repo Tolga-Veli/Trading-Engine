@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
@@ -149,6 +151,37 @@ inline constexpr std::string_view to_string(MatchType matchType) {
 inline static Time GetCurrentTime() {
   return std::chrono::duration_cast<Time>(
       std::chrono::steady_clock::now().time_since_epoch());
+}
+
+inline std::string ReadFile(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::in | std::ios::binary | std::ios::ate);
+
+  if (!in)
+    return "";
+
+  auto size = in.tellg();
+  if (size <= 0)
+    return "";
+
+  std::string result;
+  result.resize(size);
+
+  in.seekg(0, std::ios::beg);
+  if (!in.read(result.data(), size))
+    return "";
+
+  return result;
+}
+
+inline bool WriteToFile(const std::vector<std::byte> &buffer,
+                        const std::filesystem::path &path) {
+  std::ofstream out(path, std::ios::binary);
+
+  if (!out)
+    return false;
+
+  out.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
+  return out.good();
 }
 } // namespace core
 } // namespace ob

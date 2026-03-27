@@ -1,18 +1,29 @@
-#include "OrderBook.hpp"
+#pragma once
+
+#ifndef ORDERBOOK_HPP
+#include "OrderBook.hpp" // This helps the LSP "see" the class
+#endif
+
+#include "Order.hpp"
+#include "OrderBookSnapshot.hpp"
+#include "globals.hpp"
+
 #include <cassert>
+#include <optional>
 
 namespace ob::engine {
 
-void OrderBook::AddOrder(const ClientID &clientID,
-                         const ClientOrderID &clientOrderID, const Price &price,
-                         const Quantity &quantity, const Side &side,
-                         const OrderType &order_type, const TimeInForce &tif,
-                         const Flags &flags) {
+template <class MatchingStrategy>
+void OrderBook<MatchingStrategy>::AddOrder(
+    const ClientID &clientID, const ClientOrderID &clientOrderID,
+    const Price &price, const Quantity &quantity, const Side &side,
+    const OrderType &order_type, const TimeInForce &tif, const Flags &flags) {
+
   static OrderID orderID_counter = 1;
   const Order order{orderID_counter++, clientID, price, quantity, side,
                     order_type,        tif,      flags};
 
-  if (m_Orders.count(order.GetOrderID()))
+  if (m_Orders.contains(order.GetOrderID()))
     return;
 
   OrderPointer op{};
@@ -35,13 +46,15 @@ void OrderBook::AddOrder(const ClientID &clientID,
   }
   const OrderID id = op.list_iterator->GetOrderID();
   m_Orders[id] = op;
-  m_MatchingStrategy->Match(*this);
+  m_MatchingStrategy.Match(*this);
 
   // TODO: Add Add Order event
 }
 
-void OrderBook::ModifyOrder(const OrderID &orderID, const Price &new_price,
-                            const Quantity &new_quantity) {
+template <class MatchingStrategy>
+void OrderBook<MatchingStrategy>::ModifyOrder(const OrderID &orderID,
+                                              const Price &new_price,
+                                              const Quantity &new_quantity) {
   auto it = m_Orders.find(orderID);
   if (it == m_Orders.end())
     throw std::logic_error("ModifyOrder():: order not found!");
@@ -54,12 +67,13 @@ void OrderBook::ModifyOrder(const OrderID &orderID, const Price &new_price,
     throw std::logic_error("ModifyOrder():: new quantity < filled quantity!");
 
   order.ModifyOrder(new_price, new_quantity);
-  m_MatchingStrategy->Match(*this);
+  m_MatchingStrategy.Match(*this);
 
   // TODO: Add Modify Order event
 }
 
-void OrderBook::CancelOrder(const OrderID &orderID) {
+template <class MatchingStrategy>
+void OrderBook<MatchingStrategy>::CancelOrder(const OrderID &orderID) {
   auto it = m_Orders.find(orderID);
   if (it == m_Orders.end())
     throw std::logic_error("CancelOrder():: order not not found");
@@ -84,27 +98,32 @@ void OrderBook::CancelOrder(const OrderID &orderID) {
   // TODO: Add Cancel Order event
 }
 
+template <class MatchingStrategy>
 std::optional<Order>
-OrderBook::FindOrder(const OrderID &orderID) const noexcept {
+OrderBook<MatchingStrategy>::FindOrder(const OrderID &orderID) const noexcept {
   auto it = m_Orders.find(orderID);
   if (it == m_Orders.end())
     return std::nullopt;
   return *(it->second.list_iterator);
 }
 
-Order *OrderBook::GetBestBid() noexcept {
+template <class MatchingStrategy>
+Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
   if (m_Bids.empty())
     return nullptr;
   return &(m_Bids.begin()->second.front());
 }
 
-Order *OrderBook::GetBestAsk() noexcept {
+template <class MatchingStrategy>
+Order *OrderBook<MatchingStrategy>::GetBestAsk() noexcept {
   if (m_Asks.empty())
     return nullptr;
   return &(m_Asks.begin()->second.front());
 }
 
-Quantity OrderBook::GetBidVolumeAtPrice(Price price) const noexcept {
+template <class MatchingStrategy>
+Quantity
+OrderBook<MatchingStrategy>::GetBidVolumeAtPrice(Price price) const noexcept {
   Quantity total = 0;
   auto it = m_Bids.find(price);
   if (it != m_Bids.end())
@@ -114,7 +133,9 @@ Quantity OrderBook::GetBidVolumeAtPrice(Price price) const noexcept {
   return total;
 }
 
-Quantity OrderBook::GetAskVolumeAtPrice(Price price) const noexcept {
+template <class MatchingStrategy>
+Quantity
+OrderBook<MatchingStrategy>::GetAskVolumeAtPrice(Price price) const noexcept {
   Quantity total = 0;
   auto it = m_Asks.find(price);
   if (it != m_Asks.end())
@@ -124,10 +145,19 @@ Quantity OrderBook::GetAskVolumeAtPrice(Price price) const noexcept {
   return total;
 }
 
-std::size_t OrderBook::GetBidsDepth() const noexcept { return m_Bids.size(); }
-std::size_t OrderBook::GetAsksDepth() const noexcept { return m_Asks.size(); }
+template <class MatchingStrategy>
+std::size_t OrderBook<MatchingStrategy>::GetBidsDepth() const noexcept {
+  return m_Bids.size();
+}
 
-OrderBookSnapshot OrderBook::GetSnapshot(uint32_t depth) const noexcept {
+template <class MatchingStrategy>
+std::size_t OrderBook<MatchingStrategy>::GetAsksDepth() const noexcept {
+  return m_Asks.size();
+}
+
+template <class MatchingStrategy>
+OrderBookSnapshot
+OrderBook<MatchingStrategy>::GetSnapshot(uint32_t depth) const noexcept {
   uint32_t curr_depth = 0;
   std::vector<std::pair<Price, Quantity>> bids, asks;
   for (const auto &[price, list] : m_Bids) {
@@ -156,7 +186,8 @@ OrderBookSnapshot OrderBook::GetSnapshot(uint32_t depth) const noexcept {
   return {bids, asks};
 }
 
-void OrderBook::PrintOrderBook() const {
+template <class MatchingStrategy>
+void OrderBook<MatchingStrategy>::PrintOrderBook() const {
   std::cout << "------------------\n";
   for (const auto &[_, op] : m_Orders)
     op.list_iterator->log();

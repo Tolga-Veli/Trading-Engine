@@ -12,15 +12,13 @@
 #include "Matching/MatchingStrategy.hpp"
 
 namespace ob::engine {
-class OrderBook {
+template <class MatchingStrategy> class OrderBook {
 public:
   explicit OrderBook(EventQueue &queue,
-                     std::pmr::unsynchronized_pool_resource &resource,
-                     std::unique_ptr<IMatchingStrategy> strategy =
-                         std::make_unique<FIFO_Matching>())
+                     std::pmr::unsynchronized_pool_resource &resource)
       : m_PoolResource(resource), m_Bids(&m_PoolResource),
         m_Asks(&m_PoolResource), m_Orders(&m_PoolResource), m_EventQueue(queue),
-        m_MatchingStrategy(std::move(strategy)) {}
+        m_MatchingStrategy() {}
 
   ~OrderBook() {}
 
@@ -70,7 +68,7 @@ private:
   std::pmr::unordered_map<OrderID, OrderPointer> m_Orders;
 
   EventQueue &m_EventQueue;
-  std::unique_ptr<IMatchingStrategy> m_MatchingStrategy;
+  MatchingStrategy m_MatchingStrategy;
 
   void Handle(const std::monostate &empty) {}
 
@@ -94,3 +92,5 @@ private:
   }
 };
 } // namespace ob::engine
+
+#include "OrderBook.inl"

@@ -19,8 +19,10 @@ private:
   bool m_Running = true;
   std::chrono::milliseconds m_FrameTime{20};
 
-  engine::TradingEngine m_TradingEngine;
+  engine::TradingEngine<engine::FIFO_Matching> m_TradingEngine;
   render::Renderer m_Renderer;
+
+  void HandleEvent(const engine::Event &event);
 };
 
 }; // namespace ob

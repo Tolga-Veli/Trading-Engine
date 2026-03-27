@@ -30,6 +30,8 @@ public:
   }
 
   template <class U> bool push(U &&value) {
+    static_assert(std::is_constructible<T, U>::value,
+                  "U must be constructible from T");
     {
       std::lock_guard<std::mutex> lock(m_Mutex);
       if (m_Closed)

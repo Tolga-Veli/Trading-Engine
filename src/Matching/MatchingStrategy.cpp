@@ -2,9 +2,7 @@
 #include "Engine/OrderBook.hpp"
 
 namespace ob::engine {
-std::uint64_t FIFO_Matching::m_Counter = 0;
-
-void FIFO_Matching::Match(OrderBook &book) {
+void FIFO_Matching::Match(OrderBook<FIFO_Matching> &book) {
   while (true) {
     Order *bid = book.GetBestBid(), *ask = book.GetBestAsk();
 
@@ -24,6 +22,7 @@ void FIFO_Matching::Match(OrderBook &book) {
 
     if (bid->isFilled())
       book.CancelOrder(bidID);
+
     if (ask->isFilled())
       book.CancelOrder(askID);
   }
