@@ -31,8 +31,8 @@ enum class Side { Buy = 0, Sell };
 enum class OrderType { Limit = 0, Market, Stop, StopLimit };
 
 enum class TimeInForce {
-  DayOrder = 0,
-  GoodTillCancelled,
+  GoodTillCancelled = 0,
+  DayOrder,
   ImmediateOrCancel,
   FillOrKill,
   FillAndKill

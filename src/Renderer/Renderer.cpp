@@ -1,21 +1,28 @@
-#include <algorithm> // for std::max
-
 #include "Renderer.hpp"
 #include "globals.hpp"
 
+#include <algorithm>
+
 namespace ob::render {
 
-Renderer::Renderer() : m_Screen(ftxui::ScreenInteractive::TerminalOutput()) {}
+Renderer::Renderer() {
+  // Hide cursor for the lifetime of the renderer (restored in destructor)
+  std::cout << "\x1b[?25l" << std::flush;
+}
 
-Renderer::~Renderer() {}
+Renderer::~Renderer() { std::cout << "\x1b[?25h" << std::flush; }
 
 void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
   using namespace ftxui;
+
   Quantity max_vol = 0;
   for (const auto &p : snapshot.bids)
     max_vol = std::max(max_vol, p.second);
   for (const auto &p : snapshot.asks)
     max_vol = std::max(max_vol, p.second);
+
+  if (max_vol == 0)
+    max_vol = 1;
 
   auto make_row = [&](Price price, Quantity volume, Color c, bool is_bid) {
     float fraction = static_cast<float>(volume) / static_cast<float>(max_vol);
@@ -43,7 +50,6 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
 
   Price best_bid = snapshot.bids.empty() ? 0 : snapshot.bids.front().first;
   Price best_ask = snapshot.asks.empty() ? 0 : snapshot.asks.front().first;
-
   Price spread_val = best_ask - best_bid;
 
   auto spread_display =
@@ -63,11 +69,12 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
                            hbox({bid_side, separator(), ask_side}) | flex}) |
                      border | flex;
 
-  auto screen = Screen::Create(Dimension::Full(), Dimension::Fit(main_layout));
+  auto screen = Screen::Create(Dimension::Full(), Dimension::Full());
   ftxui::Render(screen, main_layout);
 
-  std::cout << "\x1b[H\x1b[J";
+  std::cout << "\x1b[H";
   screen.Print();
+  std::cout << std::flush;
 }
 
 } // namespace ob::render

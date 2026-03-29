@@ -49,15 +49,16 @@ public:
   OrderBook(OrderBook &&) = delete;
   OrderBook &operator=(OrderBook &&) = delete;
 
-  void AddOrder(const ClientID &clientID, const Price &price,
+  bool AddOrder(const ClientID &clientID, const Price &price,
                 const Quantity &quantity, const Side &side,
                 const OrderType &order_type, const TimeInForce &tif,
-                const Flags &flags);
+                const Flags &flags, bool isModify);
 
   void ModifyOrder(const ClientID &clientID, const OrderID &orderID,
                    const Price &new_price, const Quantity &new_quantity);
 
-  void CancelOrder(const ClientID &clientID, const OrderID &orderID);
+  bool CancelOrder(const ClientID &clientID, const OrderID &orderID,
+                   bool isModify);
 
   [[nodiscard]] const Order *FindOrder(const OrderID &orderID) const noexcept;
 
@@ -103,7 +104,7 @@ private:
 
   void Handle(const CommandTypes::AddOrder &order) {
     AddOrder(order.clientID, order.price, order.quantity, order.side,
-             order.order_type, order.tif, order.flags);
+             order.order_type, order.tif, order.flags, false);
   }
 
   void Handle(const CommandTypes::ModifyOrder &order) {
@@ -112,7 +113,7 @@ private:
   }
 
   void Handle(const CommandTypes::CancelOrder &cancel) {
-    CancelOrder(cancel.clientID, cancel.orderID);
+    CancelOrder(cancel.clientID, cancel.orderID, false);
   }
 };
 } // namespace ob::engine

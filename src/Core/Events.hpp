@@ -6,12 +6,23 @@
 
 namespace ob::engine {
 
-enum class ErrorCode { None = 0, InvalidRequest = 1 };
+enum class ErrorCode {
+  None = 0,
+  InvalidRequest = 1,
+  InsufficientLiquidity,
+  PostOnlyViolation
+};
 
 namespace EventTypes {
 struct OrderAccepted {
   ClientID clientID;
   OrderID orderID;
+};
+
+struct OrderExpired {
+  ClientID clientID;
+  OrderID orderID;
+  Quantity remaining_quantity;
 };
 
 struct OrderRejected {
@@ -21,7 +32,8 @@ struct OrderRejected {
 
 struct ModifyAccepted {
   ClientID clientID;
-  OrderID orderID;
+  OrderID old_orderID;
+  OrderID new_orderID;
 };
 
 struct ModifyRejected {
@@ -45,8 +57,8 @@ struct CancelRejected {
 
 using Event =
     std::variant<std::monostate, EventTypes::OrderAccepted,
-                 EventTypes::OrderRejected, EventTypes::ModifyAccepted,
-                 EventTypes::ModifyRejected, EventTypes::CancelAccepted,
-                 EventTypes::CancelRejected>;
+                 EventTypes::OrderExpired, EventTypes::OrderRejected,
+                 EventTypes::ModifyAccepted, EventTypes::ModifyRejected,
+                 EventTypes::CancelAccepted, EventTypes::CancelRejected>;
 
 } // namespace ob::engine

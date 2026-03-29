@@ -68,7 +68,7 @@ public:
     HERMES_INFO("Order ID: {}, ClientID: {}, Price: {}, InitialQuantity: {}, "
                 "RemainingQuantity: {}, Time: {}, Side: {}, Order Type: {}, "
                 "Time in Force: {}, Flags:{} \n",
-                m_OrderID, m_ClientID, m_Price, m_IntialQuantity,
+                m_OrderID, m_ClientID, m_Price * 1000, m_IntialQuantity,
                 m_RemainingQuantity, m_Timestamp, core::to_string(m_Side),
                 core::to_string(m_OrderType), core::to_string(m_TimeInForce),
                 core::to_string(m_Flags));
@@ -80,6 +80,7 @@ private:
   Price m_Price;
   Quantity m_IntialQuantity, m_RemainingQuantity;
   Time m_Timestamp;
+
   Side m_Side;
   OrderType m_OrderType;
   TimeInForce m_TimeInForce;

@@ -13,24 +13,94 @@
 namespace ob::engine {
 
 template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::AddOrder(
+bool OrderBook<MatchingStrategy>::AddOrder(
     const ClientID &clientID, const Price &price, const Quantity &quantity,
     const Side &side, const OrderType &order_type, const TimeInForce &tif,
-    const Flags &flags) {
+    const Flags &flags, bool isModify) {
+
+  if (tif == TimeInForce::FillOrKill) {
+    Quantity available = 0;
+    if (side == Side::Buy) {
+      for (const auto &[ask_price, level_data] : m_Asks) {
+        if (order_type != OrderType::Market && price < ask_price)
+          break;
+
+        available += level_data.volume;
+
+        if (available >= quantity)
+          break;
+      }
+    } else {
+      for (const auto &[bid_price, level_data] : m_Bids) {
+        if (order_type != OrderType::Market && price > bid_price)
+          break;
+
+        available += level_data.volume;
+
+        if (available >= quantity)
+          break;
+      }
+    }
+
+    if (quantity > available) {
+      if (!isModify)
+        m_EventQueue.push(EventTypes::OrderRejected{
+            clientID, ErrorCode::InsufficientLiquidity});
+      return false;
+    }
+  }
 
   m_OrderCounter++;
   Order order{m_OrderCounter, clientID,   price, quantity,
               side,           order_type, tif,   flags};
 
+  if (!isModify)
+    m_EventQueue.push(EventTypes::OrderAccepted{clientID, m_OrderCounter});
+
+  // Post Only
+  if (order_type != OrderType::Limit &&
+      (flags & Flags::PostOnly) == Flags::PostOnly) {
+    bool match = false;
+    if (side == Side::Buy && !m_Asks.empty() && price >= m_Asks.begin()->first)
+      match = true;
+    if (side == Side::Sell && !m_Bids.empty() && price <= m_Bids.begin()->first)
+      match = true;
+
+    if (match) {
+      m_EventQueue.push(
+          EventTypes::OrderRejected{clientID, ErrorCode::PostOnlyViolation});
+      return false;
+    }
+  }
   m_MatchingStrategy.Match(order, *this);
 
   if (order.GetRemainingQuantity() == 0)
-    return;
+    return true;
+
+  bool fl = true;
+  switch (tif) {
+  case TimeInForce::ImmediateOrCancel:
+  case TimeInForce::FillOrKill:
+  case TimeInForce::FillAndKill:
+    fl = false;
+    break;
+  case TimeInForce::DayOrder:
+  case TimeInForce::GoodTillCancelled:
+    fl = (order_type != OrderType::Market);
+    break;
+  }
+
+  if (!fl) {
+    m_EventQueue.push(EventTypes::OrderExpired{clientID, m_OrderCounter,
+                                               order.GetRemainingQuantity()});
+    return true;
+  }
 
   if (side == Side::Buy) {
     auto [level_it, inserted] =
         m_Bids.try_emplace(price, LevelData{&m_PoolResource});
-    level_it->second.volume += order.GetRemainingQuantity();
+    if ((flags & Flags::Hidden) == Flags::None)
+      level_it->second.volume += order.GetRemainingQuantity();
     auto &list = level_it->second.orders;
 
     list.emplace_back(std::move(order));
@@ -38,15 +108,15 @@ void OrderBook<MatchingStrategy>::AddOrder(
   } else {
     auto [level_it, inserted] =
         m_Asks.try_emplace(price, LevelData{&m_PoolResource});
-    level_it->second.volume += order.GetRemainingQuantity();
+    if ((flags & Flags::Hidden) == Flags::None)
+      level_it->second.volume += order.GetRemainingQuantity();
     auto &list = level_it->second.orders;
 
     list.emplace_back(std::move(order));
     m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
   }
 
-  m_EventQueue.push(EventTypes::OrderAccepted{clientID, m_OrderCounter});
-  return;
+  return true;
 }
 
 template <class MatchingStrategy>
@@ -68,6 +138,7 @@ void OrderBook<MatchingStrategy>::ModifyOrder(const ClientID &clientID,
   auto list_it = entry.list_iterator;
   auto map_it = entry.map_iterator;
 
+  const OrderID old_orderID = list_it->GetOrderID();
   const Price old_price = list_it->GetPrice();
   const Quantity old_quantity = list_it->GetRemainingQuantity();
   const Side side = list_it->GetSide();
@@ -76,30 +147,43 @@ void OrderBook<MatchingStrategy>::ModifyOrder(const ClientID &clientID,
   const Flags flags = list_it->GetFlags();
 
   if (new_price != old_price || new_quantity > old_quantity) {
-    CancelOrder(clientID, orderID);
-    AddOrder(clientID, new_price, new_quantity, side, type, tif, flags);
+    if (!CancelOrder(clientID, orderID, true)) {
+      m_EventQueue.push(EventTypes::ModifyRejected{clientID, orderID,
+                                                   ErrorCode::InvalidRequest});
+      return;
+    }
+    if (!AddOrder(clientID, new_price, new_quantity, side, type, tif, flags,
+                  true)) {
+      m_EventQueue.push(EventTypes::ModifyRejected{clientID, orderID,
+                                                   ErrorCode::InvalidRequest});
+      return;
+    }
 
     // new orderID
-    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, m_OrderCounter});
+    m_EventQueue.push(
+        EventTypes::ModifyAccepted{clientID, old_orderID, m_OrderCounter});
 
   } else if (new_quantity < old_quantity) {
     Quantity diff = list_it->UpdateQuantity(new_quantity);
-    map_it->second.volume += diff;
+    if ((flags & Flags::Hidden) == Flags::None)
+      map_it->second.volume += diff;
 
-    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, orderID});
+    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, orderID, orderID});
   }
 }
 
 template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
-                                              const OrderID &orderID) {
+bool OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
+                                              const OrderID &orderID,
+                                              bool isModify) {
   auto entry_it = m_Orders.find(orderID);
   if (entry_it == m_Orders.end()) {
     HERMES_WARN("OrderBook::CancelOrder() trying to cancel an order that "
                 "doesn't exist");
-    m_EventQueue.push(EventTypes::CancelRejected{orderID, clientID,
-                                                 ErrorCode::InvalidRequest});
-    return;
+    if (!isModify)
+      m_EventQueue.push(EventTypes::CancelRejected{orderID, clientID,
+                                                   ErrorCode::InvalidRequest});
+    return false;
   }
 
   auto &order_entry = entry_it->second;
@@ -107,8 +191,10 @@ void OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
   auto map_it = order_entry.map_iterator;
 
   const Side side = list_it->GetSide();
+  const Flags flags = list_it->GetFlags();
 
-  map_it->second.volume -= list_it->GetRemainingQuantity();
+  if ((flags & Flags::Hidden) == Flags::None)
+    map_it->second.volume -= list_it->GetRemainingQuantity();
 
   auto &orderList = map_it->second.orders;
   orderList.erase(list_it);
@@ -121,7 +207,10 @@ void OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
       m_Asks.erase(map_it);
   }
 
-  m_EventQueue.push(EventTypes::CancelAccepted{clientID, orderID});
+  if (!isModify)
+    m_EventQueue.push(EventTypes::CancelAccepted{clientID, orderID});
+
+  return true;
 }
 
 template <class MatchingStrategy>
