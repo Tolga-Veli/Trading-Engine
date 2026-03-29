@@ -22,8 +22,8 @@ using ClientID = u64;
 using OrderID = u64;
 using ClientOrderID = u64;
 using TradeID = u64;
-using Price = u64; // in 1/10th of a cent therefore  1000 = 1$
-using Quantity = u64;
+using Price = i64; // in 1/10th of a cent therefore  1000 = 1$
+using Quantity = i64;
 using Time = std::chrono::nanoseconds;
 
 enum class Side { Buy = 0, Sell };

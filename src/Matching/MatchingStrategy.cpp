@@ -1,30 +1,56 @@
 #include "MatchingStrategy.hpp"
 #include "Engine/OrderBook.hpp"
 
-namespace ob::engine {
-void FIFO_Matching::Match(OrderBook<FIFO_Matching> &book) {
-  while (true) {
-    Order *bid = book.GetBestBid(), *ask = book.GetBestAsk();
+namespace ob::matching {
+void PriceTimePriority::Match(Order &order,
+                              engine::OrderBook<PriceTimePriority> &book) {
+  const Side side = order.GetSide();
 
-    if (!bid || !ask || bid->GetPrice() < ask->GetPrice())
-      break;
+  if (side == Side::Buy) {
+    while (order.GetRemainingQuantity() > 0) {
+      Order *top = book.GetBestAsk();
 
-    Quantity tradeQty =
-        std::min(bid->GetRemainingQuantity(), ask->GetRemainingQuantity());
+      if (!top)
+        break;
 
-    const OrderID bidID = bid->GetOrderID(), askID = ask->GetOrderID();
+      if (order.GetOrderType() != OrderType::Market &&
+          order.GetPrice() < top->GetPrice())
+        break;
 
-    bid->Fill(tradeQty);
-    ask->Fill(tradeQty);
+      Quantity quantity =
+          std::min(order.GetRemainingQuantity(), top->GetRemainingQuantity());
 
-    /*book.EmitTrade(Trade{m_Counter++, bidID, askID, bid->GetPrice(),
-                         ask->GetPrice(), tradeQty, MatchType::Standard});*/
+      order.Fill(quantity);
+      top->Fill(quantity);
+      // book.RecordFill(top->GetPrice(), quantity, top->GetSide());
 
-    if (bid->isFilled())
-      book.CancelOrder(bidID);
+      // book.EmitTrade()
 
-    if (ask->isFilled())
-      book.CancelOrder(askID);
+      if (top->isFilled())
+        book.CancelOrder(top->GetClientID(), top->GetOrderID());
+    }
+  } else {
+    while (order.GetRemainingQuantity() > 0) {
+      Order *top = book.GetBestBid();
+
+      if (!top)
+        break;
+
+      if (order.GetOrderType() != OrderType::Market &&
+          order.GetPrice() > top->GetPrice())
+        break;
+
+      Quantity quantity =
+          std::min(order.GetRemainingQuantity(), top->GetRemainingQuantity());
+
+      order.Fill(quantity);
+      top->Fill(quantity);
+
+      // book.EmitTrade()
+
+      if (top->isFilled())
+        book.CancelOrder(top->GetClientID(), top->GetOrderID());
+    }
   }
 }
-} // namespace ob::engine
+} // namespace ob::matching

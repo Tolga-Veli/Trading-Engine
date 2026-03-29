@@ -1,15 +1,23 @@
 #pragma once
 
+#include "Order.hpp"
+
 #include <cstdint>
 
-namespace ob::engine {
+namespace ob {
+namespace engine {
+template <class Strategy> class OrderBook;
+}
 
-template <class T> class OrderBook;
+namespace matching {
 
-class FIFO_Matching {
+struct PriceTimePriority {
 public:
-  void Match(OrderBook<FIFO_Matching> &book);
+  void Match(Order &order, engine::OrderBook<PriceTimePriority> &book);
 
-  inline static std::uint64_t m_Counter = 0;
+private:
+  std::uint64_t m_Counter = 0;
 };
-} // namespace ob::engine
+
+} // namespace matching
+} // namespace ob

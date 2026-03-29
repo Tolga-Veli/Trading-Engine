@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Core/Logging.hpp"
 #include "Core/globals.hpp"
 
 #include <filesystem>
@@ -21,10 +22,12 @@ public:
 
   void WriteBackup(const std::vector<std::byte> &buffer) const {
     core::WriteToFile(buffer, m_Backup);
+    HERMES_INFO("Wrote backup files to: {}", m_Backup.string());
   }
 
   void WriteEventLog(const std::vector<std::byte> &buffer) const {
     core::WriteToFile(buffer, m_EventLog);
+    HERMES_INFO("Wrote event logs to: {}", m_EventLog.string());
   }
 
 private:

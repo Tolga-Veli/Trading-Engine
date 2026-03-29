@@ -36,10 +36,10 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
 
   Elements bid_rows, ask_rows;
   for (const auto &bid : snapshot.bids)
-    bid_rows.push_back(make_row(bid.first, bid.second, Color::Green, true));
+    bid_rows.emplace_back(make_row(bid.first, bid.second, Color::Green, true));
 
   for (const auto &ask : snapshot.asks)
-    ask_rows.push_back(make_row(ask.first, ask.second, Color::Red, false));
+    ask_rows.emplace_back(make_row(ask.first, ask.second, Color::Red, false));
 
   Price best_bid = snapshot.bids.empty() ? 0 : snapshot.bids.front().first;
   Price best_ask = snapshot.asks.empty() ? 0 : snapshot.asks.front().first;

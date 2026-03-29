@@ -16,6 +16,11 @@ public:
 
   ~Order() noexcept = default;
 
+  Order(const Order &) = default;
+  Order(Order &&) = default;
+  Order &operator=(const Order &) = default;
+  Order &operator=(Order &&) = default;
+
   const OrderID &GetOrderID() const noexcept { return m_OrderID; }
   const ClientID &GetClientID() const noexcept { return m_ClientID; }
   Price GetPrice() const noexcept { return m_Price; }
@@ -53,6 +58,12 @@ public:
     m_RemainingQuantity -= quantity;
   }
 
+  Quantity UpdateQuantity(Quantity new_quantity) {
+    Quantity diff = new_quantity - m_RemainingQuantity;
+    m_RemainingQuantity = new_quantity;
+    return diff;
+  }
+
   void log() const {
     HERMES_INFO("Order ID: {}, ClientID: {}, Price: {}, InitialQuantity: {}, "
                 "RemainingQuantity: {}, Time: {}, Side: {}, Order Type: {}, "
@@ -64,14 +75,14 @@ public:
   }
 
 private:
-  const OrderID m_OrderID;
-  const ClientID m_ClientID;
+  OrderID m_OrderID;
+  ClientID m_ClientID;
   Price m_Price;
   Quantity m_IntialQuantity, m_RemainingQuantity;
   Time m_Timestamp;
-  const Side m_Side;
-  const OrderType m_OrderType;
-  const TimeInForce m_TimeInForce;
-  const Flags m_Flags;
+  Side m_Side;
+  OrderType m_OrderType;
+  TimeInForce m_TimeInForce;
+  Flags m_Flags;
 };
 } // namespace ob

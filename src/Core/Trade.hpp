@@ -13,6 +13,11 @@ public:
         m_BidPrice(bidPrice), m_AskPrice(askPrice), m_Quantity(quantity),
         m_MatchType(matchType), m_Timestamp(core::GetCurrentTime()) {}
 
+  Trade(const Trade &) = default;
+  Trade(Trade &&) = default;
+  Trade &operator=(const Trade &) = default;
+  Trade &operator=(Trade &&) = default;
+
   const TradeID GetTradeID() const noexcept { return m_TradeID; }
   const OrderID GetBidOrderID() const noexcept { return m_BidOrderID; }
   const OrderID GetAskOrderID() const noexcept { return m_AskOrderID; }
@@ -30,11 +35,11 @@ public:
   }
 
 private:
-  const TradeID m_TradeID;
-  const OrderID m_BidOrderID, m_AskOrderID;
-  const Time m_Timestamp;
-  const Price m_BidPrice, m_AskPrice;
-  const Quantity m_Quantity;
-  const MatchType m_MatchType;
+  TradeID m_TradeID;
+  OrderID m_BidOrderID, m_AskOrderID;
+  Time m_Timestamp;
+  Price m_BidPrice, m_AskPrice;
+  Quantity m_Quantity;
+  MatchType m_MatchType;
 };
 } // namespace ob

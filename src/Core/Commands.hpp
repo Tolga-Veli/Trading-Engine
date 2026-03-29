@@ -11,7 +11,6 @@ enum class CommandType { None = 0, Add = 1, Modify, Cancel };
 namespace CommandTypes {
 struct AddOrder {
   ClientID clientID;
-  ClientOrderID clientOrderID;
   Price price;
   Quantity quantity;
   Side side;
@@ -21,24 +20,21 @@ struct AddOrder {
 };
 
 struct ModifyOrder {
+  ClientID clientID;
   OrderID orderID;
   Price new_price;
   Quantity new_quantity;
 };
 
 struct CancelOrder {
+  ClientID clientID;
   OrderID orderID;
-};
-
-struct RequestSnapshot {
-  std::uint32_t depth;
 };
 
 } // namespace CommandTypes
 
 using Command =
     std::variant<std::monostate, CommandTypes::AddOrder,
-                 CommandTypes::ModifyOrder, CommandTypes::CancelOrder,
-                 CommandTypes::RequestSnapshot>;
+                 CommandTypes::ModifyOrder, CommandTypes::CancelOrder>;
 
 } // namespace ob::engine

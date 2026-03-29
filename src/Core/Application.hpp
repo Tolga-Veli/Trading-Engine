@@ -17,9 +17,13 @@ public:
 
 private:
   bool m_Running = true;
-  std::chrono::milliseconds m_FrameTime{20};
 
-  engine::TradingEngine<engine::FIFO_Matching> m_TradingEngine;
+  std::chrono::milliseconds m_EngineTickRate{10};
+  std::chrono::milliseconds m_FrameTime{50};
+  std::chrono::time_point<std::chrono::high_resolution_clock> m_LastRenderTime{
+      std::chrono::high_resolution_clock::now()};
+
+  engine::TradingEngine<matching::PriceTimePriority> m_TradingEngine;
   render::Renderer m_Renderer;
 
   void HandleEvent(const engine::Event &event);

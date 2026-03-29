@@ -9,188 +9,182 @@
 #include "globals.hpp"
 
 #include <cassert>
-#include <optional>
 
 namespace ob::engine {
 
 template <class MatchingStrategy>
 void OrderBook<MatchingStrategy>::AddOrder(
-    const ClientID &clientID, const ClientOrderID &clientOrderID,
-    const Price &price, const Quantity &quantity, const Side &side,
-    const OrderType &order_type, const TimeInForce &tif, const Flags &flags) {
+    const ClientID &clientID, const Price &price, const Quantity &quantity,
+    const Side &side, const OrderType &order_type, const TimeInForce &tif,
+    const Flags &flags) {
 
-  static OrderID orderID_counter = 1;
-  const Order order{orderID_counter++, clientID, price, quantity, side,
-                    order_type,        tif,      flags};
+  m_OrderCounter++;
+  Order order{m_OrderCounter, clientID,   price, quantity,
+              side,           order_type, tif,   flags};
 
-  if (m_Orders.contains(order.GetOrderID()))
+  m_MatchingStrategy.Match(order, *this);
+
+  if (order.GetRemainingQuantity() == 0)
     return;
 
-  OrderPointer op{};
-  if (order.GetSide() == Side::Buy) {
-    auto [it, inserted] = m_Bids.try_emplace(
-        order.GetPrice(), std::pmr::list<Order>(&m_PoolResource));
-    auto &list = it->second;
+  if (side == Side::Buy) {
+    auto [level_it, inserted] =
+        m_Bids.try_emplace(price, LevelData{&m_PoolResource});
+    level_it->second.volume += order.GetRemainingQuantity();
+    auto &list = level_it->second.orders;
 
-    list.push_back(std::move(order));
-    op.list_iterator = std::prev(list.end());
-    op.map_iterator = it;
+    list.emplace_back(std::move(order));
+    m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
   } else {
-    auto [it, inserted] = m_Asks.try_emplace(
-        order.GetPrice(), std::pmr::list<Order>(&m_PoolResource));
-    auto &list = it->second;
+    auto [level_it, inserted] =
+        m_Asks.try_emplace(price, LevelData{&m_PoolResource});
+    level_it->second.volume += order.GetRemainingQuantity();
+    auto &list = level_it->second.orders;
 
-    list.push_back(std::move(order));
-    op.list_iterator = std::prev(list.end());
-    op.map_iterator = it;
+    list.emplace_back(std::move(order));
+    m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
   }
-  const OrderID id = op.list_iterator->GetOrderID();
-  m_Orders[id] = op;
-  m_MatchingStrategy.Match(*this);
 
-  // TODO: Add Add Order event
+  m_EventQueue.push(EventTypes::OrderAccepted{clientID, m_OrderCounter});
+  return;
 }
 
 template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::ModifyOrder(const OrderID &orderID,
+void OrderBook<MatchingStrategy>::ModifyOrder(const ClientID &clientID,
+                                              const OrderID &orderID,
                                               const Price &new_price,
                                               const Quantity &new_quantity) {
   auto it = m_Orders.find(orderID);
-  if (it == m_Orders.end())
-    throw std::logic_error("ModifyOrder():: order not found!");
-
-  auto &order = *(it->second.list_iterator);
-  if (new_price != order.GetPrice())
-    throw std::logic_error("ModifyOrder():: price change not supported!");
-
-  if (new_quantity < order.GetFilledQuantity())
-    throw std::logic_error("ModifyOrder():: new quantity < filled quantity!");
-
-  order.ModifyOrder(new_price, new_quantity);
-  m_MatchingStrategy.Match(*this);
-
-  // TODO: Add Modify Order event
-}
-
-template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::CancelOrder(const OrderID &orderID) {
-  auto it = m_Orders.find(orderID);
-  if (it == m_Orders.end())
-    throw std::logic_error("CancelOrder():: order not not found");
-
-  auto map_it = it->second.map_iterator;
-  auto &orderList = map_it->second;
-
-  Price price = it->second.list_iterator->GetPrice();
-  Side side = it->second.list_iterator->GetSide();
-
-  orderList.erase(it->second.list_iterator);
-  m_Orders.erase(it);
-
-  if (!orderList.empty())
+  if (it == m_Orders.end()) {
+    HERMES_WARN("OrderBook::ModifyOrder() trying to modify an order wtih ID:{} "
+                "that doesn't exist",
+                orderID);
+    m_EventQueue.push(EventTypes::ModifyRejected{orderID, clientID,
+                                                 ErrorCode::InvalidRequest});
     return;
+  }
 
-  if (side == Side::Buy)
-    m_Bids.erase(map_it);
-  else
-    m_Asks.erase(map_it);
+  auto &entry = it->second;
+  auto list_it = entry.list_iterator;
+  auto map_it = entry.map_iterator;
 
-  // TODO: Add Cancel Order event
+  const Price old_price = list_it->GetPrice();
+  const Quantity old_quantity = list_it->GetRemainingQuantity();
+  const Side side = list_it->GetSide();
+  const OrderType type = list_it->GetOrderType();
+  const TimeInForce tif = list_it->GetTimeInForce();
+  const Flags flags = list_it->GetFlags();
+
+  if (new_price != old_price || new_quantity > old_quantity) {
+    CancelOrder(clientID, orderID);
+    AddOrder(clientID, new_price, new_quantity, side, type, tif, flags);
+
+    // new orderID
+    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, m_OrderCounter});
+
+  } else if (new_quantity < old_quantity) {
+    Quantity diff = list_it->UpdateQuantity(new_quantity);
+    map_it->second.volume += diff;
+
+    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, orderID});
+  }
 }
 
 template <class MatchingStrategy>
-std::optional<Order>
+void OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
+                                              const OrderID &orderID) {
+  auto entry_it = m_Orders.find(orderID);
+  if (entry_it == m_Orders.end()) {
+    HERMES_WARN("OrderBook::CancelOrder() trying to cancel an order that "
+                "doesn't exist");
+    m_EventQueue.push(EventTypes::CancelRejected{orderID, clientID,
+                                                 ErrorCode::InvalidRequest});
+    return;
+  }
+
+  auto &order_entry = entry_it->second;
+  auto list_it = order_entry.list_iterator;
+  auto map_it = order_entry.map_iterator;
+
+  const Side side = list_it->GetSide();
+
+  map_it->second.volume -= list_it->GetRemainingQuantity();
+
+  auto &orderList = map_it->second.orders;
+  orderList.erase(list_it);
+  m_Orders.erase(entry_it);
+
+  if (orderList.empty()) {
+    if (side == Side::Buy)
+      m_Bids.erase(map_it);
+    else
+      m_Asks.erase(map_it);
+  }
+
+  m_EventQueue.push(EventTypes::CancelAccepted{clientID, orderID});
+}
+
+template <class MatchingStrategy>
+const Order *
 OrderBook<MatchingStrategy>::FindOrder(const OrderID &orderID) const noexcept {
-  auto it = m_Orders.find(orderID);
-  if (it == m_Orders.end())
-    return std::nullopt;
-  return *(it->second.list_iterator);
+  auto entry_it = m_Orders.find(orderID);
+  if (entry_it == m_Orders.end())
+    return nullptr;
+  return &(*entry_it->second.list_iterator);
 }
 
 template <class MatchingStrategy>
 Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
   if (m_Bids.empty())
     return nullptr;
-  return &(m_Bids.begin()->second.front());
+  return &(m_Bids.begin()->second.orders.front());
 }
 
 template <class MatchingStrategy>
 Order *OrderBook<MatchingStrategy>::GetBestAsk() noexcept {
   if (m_Asks.empty())
     return nullptr;
-  return &(m_Asks.begin()->second.front());
+  return &(m_Asks.begin()->second.orders.front());
 }
 
 template <class MatchingStrategy>
 Quantity
 OrderBook<MatchingStrategy>::GetBidVolumeAtPrice(Price price) const noexcept {
-  Quantity total = 0;
-  auto it = m_Bids.find(price);
-  if (it != m_Bids.end())
-    for (const auto &order : it->second)
-      total += order.GetRemainingQuantity();
-
-  return total;
+  auto level_it = m_Bids.find(price);
+  if (level_it == m_Bids.end())
+    return 0;
+  return level_it->second.volume;
 }
 
 template <class MatchingStrategy>
 Quantity
 OrderBook<MatchingStrategy>::GetAskVolumeAtPrice(Price price) const noexcept {
-  Quantity total = 0;
-  auto it = m_Asks.find(price);
-  if (it != m_Asks.end())
-    for (const auto &order : it->second)
-      total += order.GetRemainingQuantity();
-
-  return total;
-}
-
-template <class MatchingStrategy>
-std::size_t OrderBook<MatchingStrategy>::GetBidsDepth() const noexcept {
-  return m_Bids.size();
-}
-
-template <class MatchingStrategy>
-std::size_t OrderBook<MatchingStrategy>::GetAsksDepth() const noexcept {
-  return m_Asks.size();
+  auto level_it = m_Asks.find(price);
+  if (level_it == m_Asks.end())
+    return 0;
+  return level_it->second.volume;
 }
 
 template <class MatchingStrategy>
 OrderBookSnapshot
 OrderBook<MatchingStrategy>::GetSnapshot(uint32_t depth) const noexcept {
-  uint32_t curr_depth = 0;
-  std::vector<std::pair<Price, Quantity>> bids, asks;
-  for (const auto &[price, list] : m_Bids) {
-    if (++curr_depth > depth)
+  OrderBookSnapshot snapshot;
+  snapshot.bids.reserve(depth), snapshot.asks.reserve(depth);
+
+  u32 curr = 0;
+  for (const auto &[price, level_data] : m_Bids) {
+    if (++curr > depth)
       break;
-
-    Quantity total_quantity = 0;
-    for (const auto &order : list)
-      total_quantity += order.GetRemainingQuantity();
-
-    bids.push_back({price, total_quantity});
+    snapshot.bids.push_back({price, level_data.volume});
   }
 
-  curr_depth = 0;
-  for (const auto &[price, list] : m_Asks) {
-    if (++curr_depth > depth)
+  curr = 0;
+  for (const auto &[price, level_data] : m_Asks) {
+    if (++curr > depth)
       break;
-
-    Quantity total_quantity = 0;
-    for (const auto &order : list)
-      total_quantity += order.GetRemainingQuantity();
-
-    asks.push_back({price, total_quantity});
+    snapshot.asks.push_back({price, level_data.volume});
   }
-
-  return {bids, asks};
+  return snapshot;
 }
 
-template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::PrintOrderBook() const {
-  std::cout << "------------------\n";
-  for (const auto &[_, op] : m_Orders)
-    op.list_iterator->log();
-  std::cout << "------------------\n";
-}
 } // namespace ob::engine

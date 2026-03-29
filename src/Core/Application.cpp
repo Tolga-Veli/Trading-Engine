@@ -21,10 +21,16 @@ void Application::Run() {
   static std::size_t timer1 = 1, timer2 = 1;
 
   m_TradingEngine.Start();
-  m_TradingEngine.RequestSnapshot(30);
+  m_Renderer.Render({});
 
   while (m_Running) {
-    HandleEvent(m_TradingEngine.GetEvent());
+    while (true) {
+      auto event = m_TradingEngine.GetEvent();
+      if (std::holds_alternative<std::monostate>(event))
+        break;
+
+      HandleEvent(m_TradingEngine.GetEvent());
+    }
 
     m_TradingEngine.AddOrder(
         ClientID{1}, ClientOrderID{timer1++}, Price{dist(rng)},
@@ -35,23 +41,25 @@ void Application::Run() {
         Quantity{dist(rng)}, ob::Side::Sell, ob::OrderType::Limit,
         ob::TimeInForce::GoodTillCancelled, ob::Flags::None);
 
-    m_TradingEngine.RequestSnapshot(30);
+    if (auto now = std::chrono::high_resolution_clock::now();
+        now - m_LastRenderTime > m_FrameTime) {
+      m_TradingEngine.UpdateSnapshot(30);
+      auto snapshot = m_TradingEngine.GetSnapshot();
+      m_Renderer.Render(snapshot);
+      m_LastRenderTime = now;
+    }
 
-    std::this_thread::sleep_for(m_FrameTime);
+    std::this_thread::sleep_for(m_EngineTickRate);
   }
 }
 
 void Application::HandleEvent(const engine::Event &event) {
-  std::visit(
-      overloaded{[](std::monostate) {},
-                 [this](const engine::EventTypes::SnapshotRequestAccepted &e) {
-                   m_Renderer.Render(e.snapshot);
-                 },
-                 [](const auto &other_events) {
-                   // Handle OrderAccepted, Cancelled, etc., or just ignore for
-                   // rendering
-                 }},
-      event);
+  std::visit(overloaded{[](std::monostate) {},
+                        [](const auto &other_events) {
+                          // Handle OrderAccepted, Cancelled, etc., or just
+                          // ignore for rendering
+                        }},
+             event);
 }
 
 } // namespace ob
