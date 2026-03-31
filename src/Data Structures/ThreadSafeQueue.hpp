@@ -30,13 +30,13 @@ public:
   }
 
   template <class U> bool push(U &&value) {
-    static_assert(std::is_constructible<T, U>::value,
-                  "U must be constructible from T");
+    static_assert(std::is_constructible_v<T, U>,
+                  "T must be constructible from U");
     {
       std::lock_guard<std::mutex> lock(m_Mutex);
       if (m_Closed)
         return false;
-      m_Queue.push(std::forward<U>(value));
+      m_Queue.emplace(std::forward<U>(value));
     }
     m_CV.notify_one();
     return true;

@@ -58,8 +58,8 @@ public:
         m_Variant);
   }
 
-  template <typename... Funcs> void Decompose(Funcs &&...f) const {
-    std::visit(Overloaded{std::forward<Funcs>(f)...}, m_Variant);
+  template <typename... Funcs> auto Decompose(Funcs &&...f) const {
+    return std::visit(Overloaded{std::forward<Funcs>(f)...}, m_Variant);
   }
 
   static void Serialize(std::vector<std::byte> &buffer, const Command &cmd) {}

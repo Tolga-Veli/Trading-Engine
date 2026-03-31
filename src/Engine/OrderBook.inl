@@ -128,12 +128,11 @@ ErrorCode OrderBook<MatchingStrategy>::ModifyOrder(
   const Flags flags = list_it->GetFlags();
 
   if (new_price != old_price || new_quantity > old_quantity) {
-    if (auto code = CancelOrder(clientID, orderID, true);
-        code != ErrorCode::Success)
+    if (auto code = CancelOrder(clientID, orderID); code != ErrorCode::Success)
       return code;
 
-    if (auto code = AddOrder(clientID, new_price, new_quantity, side, type, tif,
-                             flags, true);
+    if (auto code =
+            AddOrder(clientID, new_price, new_quantity, side, type, tif, flags);
         code != ErrorCode::Success)
       return code;
 
@@ -142,6 +141,8 @@ ErrorCode OrderBook<MatchingStrategy>::ModifyOrder(
     if ((flags & Flags::Hidden) == Flags::None)
       map_it->second.volume += diff;
   }
+
+  return ErrorCode::Success;
 }
 
 template <class MatchingStrategy>

@@ -26,8 +26,10 @@ void PriceTimePriority::Match(Order &order,
 
       // book.EmitTrade()
 
-      if (top->isFilled())
-        book.CancelOrder(top->GetClientID(), top->GetOrderID(), false);
+      if (top->isFilled()) {
+        engine::ErrorCode code =
+            book.CancelOrder(top->GetClientID(), top->GetOrderID());
+      }
     }
   } else {
     while (order.GetRemainingQuantity() > 0) {
@@ -48,8 +50,10 @@ void PriceTimePriority::Match(Order &order,
 
       // book.EmitTrade()
 
-      if (top->isFilled())
-        book.CancelOrder(top->GetClientID(), top->GetOrderID(), false);
+      if (top->isFilled()) {
+        engine::ErrorCode code =
+            book.CancelOrder(top->GetClientID(), top->GetOrderID());
+      }
     }
   }
 }

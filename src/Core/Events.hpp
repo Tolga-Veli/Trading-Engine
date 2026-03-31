@@ -8,7 +8,7 @@ namespace ob::engine {
 
 enum class EventType {
   None = 0,
-  OrderAccepted = 1,
+  OrderAccepted,
   OrderExpired,
   OrderRejected,
   ModifyAccepted,
@@ -18,8 +18,9 @@ enum class EventType {
 };
 
 enum class ErrorCode {
-  Success = 0,
-  InvalidRequest = 1,
+  None = 0,
+  Success,
+  InvalidRequest,
   InvalidModify,
   InvalidCancel,
   InsufficientLiquidity,
@@ -105,8 +106,8 @@ public:
         m_Variant);
   }
 
-  template <typename... Fs> void Decompose(Fs &&...fs) const {
-    std::visit(Overloaded{std::forward<Fs>(fs)...}, m_Variant);
+  template <typename... Fs> auto Decompose(Fs &&...fs) const {
+    return std::visit(Overloaded{std::forward<Fs>(fs)...}, m_Variant);
   }
 
   static void Serialize(std::vector<std::byte> &buffer, const Event &cmd) {}

@@ -48,15 +48,18 @@ public:
   OrderBook(OrderBook &&) = delete;
   OrderBook &operator=(OrderBook &&) = delete;
 
-  ErrorCode AddOrder(const ClientID &clientID, const Price &price,
-                     const Quantity &quantity, const Side &side,
-                     const OrderType &order_type, const TimeInForce &tif,
-                     const Flags &flags);
+  [[nodiscard]] ErrorCode AddOrder(const ClientID &clientID, const Price &price,
+                                   const Quantity &quantity, const Side &side,
+                                   const OrderType &order_type,
+                                   const TimeInForce &tif, const Flags &flags);
 
-  ErrorCode ModifyOrder(const ClientID &clientID, const OrderID &orderID,
-                        const Price &new_price, const Quantity &new_quantity);
+  [[nodiscard]] ErrorCode ModifyOrder(const ClientID &clientID,
+                                      const OrderID &orderID,
+                                      const Price &new_price,
+                                      const Quantity &new_quantity);
 
-  ErrorCode CancelOrder(const ClientID &clientID, const OrderID &orderID);
+  [[nodiscard]] ErrorCode CancelOrder(const ClientID &clientID,
+                                      const OrderID &orderID);
 
   [[nodiscard]] const Order *FindOrder(const OrderID &orderID) const noexcept;
 
@@ -82,7 +85,8 @@ public:
   }
 
   ErrorCode Apply(const Command &cmd) {
-    return cmd.Decompose([this](auto &&arg) { Handle(arg); });
+    return cmd.Decompose(
+        [this](auto &&arg) -> ErrorCode { return Handle(arg); });
   }
 
 private:
@@ -97,11 +101,13 @@ private:
 
   OrderID m_OrderCounter = 0;
 
-  void Handle(const std::monostate &empty) const noexcept {}
+  ErrorCode Handle(const std::monostate &empty) const noexcept {
+    return ErrorCode::None;
+  }
 
   ErrorCode Handle(const CommandTypes::AddOrder &order) {
     return AddOrder(order.clientID, order.price, order.quantity, order.side,
-                    order.order_type, order.tif, order.flags, false);
+                    order.order_type, order.tif, order.flags);
   }
 
   ErrorCode Handle(const CommandTypes::ModifyOrder &order) {
@@ -110,7 +116,7 @@ private:
   }
 
   ErrorCode Handle(const CommandTypes::CancelOrder &cancel) {
-    return CancelOrder(cancel.clientID, cancel.orderID, false);
+    return CancelOrder(cancel.clientID, cancel.orderID);
   }
 };
 } // namespace ob::engine
