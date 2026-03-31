@@ -1,11 +1,11 @@
 #pragma once
 
+#include <functional>
+#include <mutex>
+
 #include "CommandQueue.hpp"
 #include "EventQueue.hpp"
 #include "OrderBook.hpp"
-
-#include <functional>
-#include <mutex>
 
 namespace ob::engine {
 template <class MatchingStrategy> class TradingEngine {
@@ -49,7 +49,7 @@ public:
     Event event;
     while (m_EventQueue.try_pop(event))
       return event;
-    return std::monostate{};
+    return Event{};
   }
 
   void AddOrder(ClientID clientID, ClientOrderID clientOrderID, Price price,
@@ -69,7 +69,7 @@ public:
     m_CommandQueue.PushCommand(CommandTypes::CancelOrder{clientID, orderID});
   }
 
-  // TODO: shared_mutex ?
+  // TODO: many thread read snapshot, one thread should update snapshot
   OrderBookSnapshot GetSnapshot() {
     std::lock_guard<std::mutex> lock(m_SnapshotMutex);
     return m_LatestSnapshot;

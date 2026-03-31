@@ -26,6 +26,12 @@ using Price = i64; // in 1/10th of a cent therefore  1000 = 1$
 using Quantity = i64;
 using Time = std::chrono::nanoseconds;
 
+template <typename... Fs> struct Overloaded : Fs... {
+  using Fs::operator()...;
+};
+
+template <typename... Fs> Overloaded(Fs...) -> Overloaded<Fs...>;
+
 enum class Side { Buy = 0, Sell };
 
 enum class OrderType { Limit = 0, Market, Stop, StopLimit };

@@ -2,12 +2,12 @@
 
 #include "globals.hpp"
 
+#include <span>
 #include <variant>
 
 namespace ob::engine {
 enum class CommandType { None = 0, Add = 1, Modify, Cancel };
 
-// Holds structs with command info
 namespace CommandTypes {
 struct AddOrder {
   ClientID clientID;
@@ -33,8 +33,41 @@ struct CancelOrder {
 
 } // namespace CommandTypes
 
-using Command =
-    std::variant<std::monostate, CommandTypes::AddOrder,
-                 CommandTypes::ModifyOrder, CommandTypes::CancelOrder>;
+class Command {
+public:
+  using CmdVariant =
+      std::variant<std::monostate, CommandTypes::AddOrder,
+                   CommandTypes::ModifyOrder, CommandTypes::CancelOrder>;
+
+  Command() = default;
+  Command(const CmdVariant &v) : m_Variant(v) {}
+
+  constexpr CommandType GetType() const {
+    return std::visit(
+        [](auto &&arg) -> CommandType {
+          using T = std::decay_t<decltype(arg)>;
+          if constexpr (std::is_same_v<T, std::monostate>)
+            return CommandType::None;
+          else if constexpr (std::is_same_v<T, CommandTypes::AddOrder>)
+            return CommandType::Add;
+          else if constexpr (std::is_same_v<T, CommandTypes::ModifyOrder>)
+            return CommandType::Modify;
+          else if constexpr (std::is_same_v<T, CommandTypes::CancelOrder>)
+            return CommandType::Cancel;
+        },
+        m_Variant);
+  }
+
+  template <typename... Funcs> void Decompose(Funcs &&...f) const {
+    std::visit(Overloaded{std::forward<Funcs>(f)...}, m_Variant);
+  }
+
+  static void Serialize(std::vector<std::byte> &buffer, const Command &cmd) {}
+
+private:
+  CmdVariant m_Variant;
+};
+
+inline void Serialize(std::vector<std::byte> &buffer, const Command &cmd) {}
 
 } // namespace ob::engine

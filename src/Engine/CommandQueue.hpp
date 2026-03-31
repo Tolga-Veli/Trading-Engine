@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Commands.hpp"
+#include "Events.hpp"
 #include "ThreadSafeQueue.hpp"
 
 #include <thread>
@@ -40,8 +41,25 @@ private:
 
   void ProcessLoop(std::stop_token stoken) {
     Command cmd;
-    while (!stoken.stop_requested() && m_Queue.wait_and_pop(cmd))
-      m_Orderbook.Apply(cmd);
+    while (!stoken.stop_requested() && m_Queue.wait_and_pop(cmd)) {
+      ErrorCode code = m_Orderbook.Apply(cmd);
+      switch (code) {
+      case ErrorCode::Success:
+        break;
+      case ErrorCode::InvalidRequest:
+        break;
+      case ErrorCode::InsufficientLiquidity:
+        break;
+      case ErrorCode::PostOnlyViolation:
+        break;
+      case ErrorCode::InvalidModify:
+        break;
+      case ErrorCode::InvalidCancel:
+        break;
+      default:
+        break;
+      }
+    }
   }
 };
 } // namespace ob::engine

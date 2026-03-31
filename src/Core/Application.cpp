@@ -4,13 +4,6 @@
 #include "Application.hpp"
 
 namespace ob {
-
-template <class... Ts> struct overloaded : Ts... {
-  using Ts::operator()...;
-};
-
-template <class... Ts> overloaded(Ts...) -> overloaded<Ts...>;
-
 Application::Application() : m_TradingEngine() {};
 
 Application::~Application() { m_Running = false; }
@@ -51,15 +44,12 @@ void Application::Run() {
 
 void Application::HandleEvent(const engine::Event &event) {
   using namespace engine::EventTypes;
-  std::visit(
-      overloaded{
-          [](std::monostate) {}, [](const OrderAccepted &event) {},
-          [](const OrderExpired &event) {}, [](const OrderRejected &event) {},
-          [](const ModifyAccepted &event) {},
-          [](const ModifyRejected &event) {},
-          [](const CancelAccepted &event) {},
-          [](const CancelRejected &event) {}, [](const auto &other_events) {}},
-      event);
+  event.Decompose(
+      [](std::monostate) {}, [](const OrderAccepted &event) {},
+      [](const OrderExpired &event) {}, [](const OrderRejected &event) {},
+      [](const ModifyAccepted &event) {}, [](const ModifyRejected &event) {},
+      [](const CancelAccepted &event) {}, [](const CancelRejected &event) {},
+      [](const auto &other_events) {});
 }
 
 } // namespace ob

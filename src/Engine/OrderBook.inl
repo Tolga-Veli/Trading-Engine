@@ -1,22 +1,22 @@
 #pragma once
 
 #ifndef ORDERBOOK_HPP
-#include "OrderBook.hpp" // This helps the LSP "see" the class
+#include "OrderBook.hpp"
 #endif
+
+#include <cassert>
 
 #include "Order.hpp"
 #include "OrderBookSnapshot.hpp"
 #include "globals.hpp"
 
-#include <cassert>
-
 namespace ob::engine {
 
 template <class MatchingStrategy>
-bool OrderBook<MatchingStrategy>::AddOrder(
+ErrorCode OrderBook<MatchingStrategy>::AddOrder(
     const ClientID &clientID, const Price &price, const Quantity &quantity,
     const Side &side, const OrderType &order_type, const TimeInForce &tif,
-    const Flags &flags, bool isModify) {
+    const Flags &flags) {
 
   if (tif == TimeInForce::FillOrKill) {
     Quantity available = 0;
@@ -42,20 +42,13 @@ bool OrderBook<MatchingStrategy>::AddOrder(
       }
     }
 
-    if (quantity > available) {
-      if (!isModify)
-        m_EventQueue.push(EventTypes::OrderRejected{
-            clientID, ErrorCode::InsufficientLiquidity});
-      return false;
-    }
+    if (quantity > available)
+      return ErrorCode::InsufficientLiquidity;
   }
 
   m_OrderCounter++;
   Order order{m_OrderCounter, clientID,   price, quantity,
               side,           order_type, tif,   flags};
-
-  if (!isModify)
-    m_EventQueue.push(EventTypes::OrderAccepted{clientID, m_OrderCounter});
 
   // Post Only
   if (order_type != OrderType::Limit &&
@@ -66,16 +59,14 @@ bool OrderBook<MatchingStrategy>::AddOrder(
     if (side == Side::Sell && !m_Bids.empty() && price <= m_Bids.begin()->first)
       match = true;
 
-    if (match) {
-      m_EventQueue.push(
-          EventTypes::OrderRejected{clientID, ErrorCode::PostOnlyViolation});
-      return false;
-    }
+    if (match)
+      return ErrorCode::PostOnlyViolation;
   }
+
   m_MatchingStrategy.Match(order, *this);
 
   if (order.GetRemainingQuantity() == 0)
-    return true;
+    return ErrorCode::Success;
 
   bool fl = true;
   switch (tif) {
@@ -90,11 +81,8 @@ bool OrderBook<MatchingStrategy>::AddOrder(
     break;
   }
 
-  if (!fl) {
-    m_EventQueue.push(EventTypes::OrderExpired{clientID, m_OrderCounter,
-                                               order.GetRemainingQuantity()});
-    return true;
-  }
+  if (!fl)
+    return ErrorCode::Success;
 
   if (side == Side::Buy) {
     auto [level_it, inserted] =
@@ -116,23 +104,16 @@ bool OrderBook<MatchingStrategy>::AddOrder(
     m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
   }
 
-  return true;
+  return ErrorCode::Success;
 }
 
 template <class MatchingStrategy>
-void OrderBook<MatchingStrategy>::ModifyOrder(const ClientID &clientID,
-                                              const OrderID &orderID,
-                                              const Price &new_price,
-                                              const Quantity &new_quantity) {
+ErrorCode OrderBook<MatchingStrategy>::ModifyOrder(
+    const ClientID &clientID, const OrderID &orderID, const Price &new_price,
+    const Quantity &new_quantity) {
   auto it = m_Orders.find(orderID);
-  if (it == m_Orders.end()) {
-    HERMES_WARN("OrderBook::ModifyOrder() trying to modify an order wtih ID:{} "
-                "that doesn't exist",
-                orderID);
-    m_EventQueue.push(EventTypes::ModifyRejected{orderID, clientID,
-                                                 ErrorCode::InvalidRequest});
-    return;
-  }
+  if (it == m_Orders.end())
+    return ErrorCode::InvalidModify;
 
   auto &entry = it->second;
   auto list_it = entry.list_iterator;
@@ -147,44 +128,28 @@ void OrderBook<MatchingStrategy>::ModifyOrder(const ClientID &clientID,
   const Flags flags = list_it->GetFlags();
 
   if (new_price != old_price || new_quantity > old_quantity) {
-    if (!CancelOrder(clientID, orderID, true)) {
-      m_EventQueue.push(EventTypes::ModifyRejected{clientID, orderID,
-                                                   ErrorCode::InvalidRequest});
-      return;
-    }
-    if (!AddOrder(clientID, new_price, new_quantity, side, type, tif, flags,
-                  true)) {
-      m_EventQueue.push(EventTypes::ModifyRejected{clientID, orderID,
-                                                   ErrorCode::InvalidRequest});
-      return;
-    }
+    if (auto code = CancelOrder(clientID, orderID, true);
+        code != ErrorCode::Success)
+      return code;
 
-    // new orderID
-    m_EventQueue.push(
-        EventTypes::ModifyAccepted{clientID, old_orderID, m_OrderCounter});
+    if (auto code = AddOrder(clientID, new_price, new_quantity, side, type, tif,
+                             flags, true);
+        code != ErrorCode::Success)
+      return code;
 
   } else if (new_quantity < old_quantity) {
     Quantity diff = list_it->UpdateQuantity(new_quantity);
     if ((flags & Flags::Hidden) == Flags::None)
       map_it->second.volume += diff;
-
-    m_EventQueue.push(EventTypes::ModifyAccepted{clientID, orderID, orderID});
   }
 }
 
 template <class MatchingStrategy>
-bool OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
-                                              const OrderID &orderID,
-                                              bool isModify) {
+ErrorCode OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
+                                                   const OrderID &orderID) {
   auto entry_it = m_Orders.find(orderID);
-  if (entry_it == m_Orders.end()) {
-    HERMES_WARN("OrderBook::CancelOrder() trying to cancel an order that "
-                "doesn't exist");
-    if (!isModify)
-      m_EventQueue.push(EventTypes::CancelRejected{orderID, clientID,
-                                                   ErrorCode::InvalidRequest});
-    return false;
-  }
+  if (entry_it == m_Orders.end())
+    return ErrorCode::InvalidCancel;
 
   auto &order_entry = entry_it->second;
   auto list_it = order_entry.list_iterator;
@@ -207,10 +172,7 @@ bool OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
       m_Asks.erase(map_it);
   }
 
-  if (!isModify)
-    m_EventQueue.push(EventTypes::CancelAccepted{clientID, orderID});
-
-  return true;
+  return ErrorCode::Success;
 }
 
 template <class MatchingStrategy>

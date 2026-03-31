@@ -11,7 +11,6 @@
 #include "Core/OrderBookSnapshot.hpp"
 #include "EventQueue.hpp"
 #include "Matching/MatchingStrategy.hpp"
-#include "Memory/MemoryUtility.hpp"
 
 namespace ob::engine {
 struct LevelData {
@@ -37,9 +36,9 @@ template <class MatchingStrategy> class OrderBook {
 
 public:
   explicit OrderBook(EventQueue &queue,
-                     std::size_t pool_size = 32 * Memory::MiB)
+                     std::size_t pool_size = 32 * 1024 * 1024)
       : m_Buffer(pool_size), m_PoolResource(&m_Buffer), m_Bids(&m_PoolResource),
-        m_Asks(&m_PoolResource), m_Orders(&m_PoolResource), m_EventQueue(queue),
+        m_Asks(&m_PoolResource), m_Orders(&m_PoolResource),
         m_MatchingStrategy() {}
 
   ~OrderBook() = default;
@@ -49,16 +48,15 @@ public:
   OrderBook(OrderBook &&) = delete;
   OrderBook &operator=(OrderBook &&) = delete;
 
-  bool AddOrder(const ClientID &clientID, const Price &price,
-                const Quantity &quantity, const Side &side,
-                const OrderType &order_type, const TimeInForce &tif,
-                const Flags &flags, bool isModify);
+  ErrorCode AddOrder(const ClientID &clientID, const Price &price,
+                     const Quantity &quantity, const Side &side,
+                     const OrderType &order_type, const TimeInForce &tif,
+                     const Flags &flags);
 
-  void ModifyOrder(const ClientID &clientID, const OrderID &orderID,
-                   const Price &new_price, const Quantity &new_quantity);
+  ErrorCode ModifyOrder(const ClientID &clientID, const OrderID &orderID,
+                        const Price &new_price, const Quantity &new_quantity);
 
-  bool CancelOrder(const ClientID &clientID, const OrderID &orderID,
-                   bool isModify);
+  ErrorCode CancelOrder(const ClientID &clientID, const OrderID &orderID);
 
   [[nodiscard]] const Order *FindOrder(const OrderID &orderID) const noexcept;
 
@@ -83,8 +81,8 @@ public:
     }
   }
 
-  void Apply(const Command &cmd) {
-    std::visit([this](auto &&c) { Handle(c); }, cmd);
+  ErrorCode Apply(const Command &cmd) {
+    return cmd.Decompose([this](auto &&arg) { Handle(arg); });
   }
 
 private:
@@ -95,25 +93,24 @@ private:
   std::pmr::map<Price, LevelData, std::less<Price>> m_Asks;
   std::pmr::unordered_map<OrderID, OrderEntry> m_Orders;
 
-  EventQueue &m_EventQueue;
   MatchingStrategy m_MatchingStrategy;
 
   OrderID m_OrderCounter = 0;
 
   void Handle(const std::monostate &empty) const noexcept {}
 
-  void Handle(const CommandTypes::AddOrder &order) {
-    AddOrder(order.clientID, order.price, order.quantity, order.side,
-             order.order_type, order.tif, order.flags, false);
+  ErrorCode Handle(const CommandTypes::AddOrder &order) {
+    return AddOrder(order.clientID, order.price, order.quantity, order.side,
+                    order.order_type, order.tif, order.flags, false);
   }
 
-  void Handle(const CommandTypes::ModifyOrder &order) {
-    ModifyOrder(order.clientID, order.orderID, order.new_price,
-                order.new_quantity);
+  ErrorCode Handle(const CommandTypes::ModifyOrder &order) {
+    return ModifyOrder(order.clientID, order.orderID, order.new_price,
+                       order.new_quantity);
   }
 
-  void Handle(const CommandTypes::CancelOrder &cancel) {
-    CancelOrder(cancel.clientID, cancel.orderID, false);
+  ErrorCode Handle(const CommandTypes::CancelOrder &cancel) {
+    return CancelOrder(cancel.clientID, cancel.orderID, false);
   }
 };
 } // namespace ob::engine
