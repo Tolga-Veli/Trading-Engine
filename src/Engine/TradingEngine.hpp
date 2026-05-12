@@ -1,75 +1,52 @@
 #pragma once
 
-#include <functional>
+#include <memory>
 #include <mutex>
+#include <thread>
 
-#include "CommandQueue.hpp"
-#include "EventQueue.hpp"
+#include "Data Structures/SPSC-Queue.hpp"
+#include "Data Structures/ThreadSafeQueue.hpp"
 #include "OrderBook.hpp"
 
 namespace ob::engine {
-template <class MatchingStrategy> class TradingEngine {
+template <class MatchingStrategy, u64 TickRateNs, u64 CommandCapacity,
+          u64 EventCapacity>
+class alignas(64) TradingEngine {
 public:
   using Book = OrderBook<MatchingStrategy>;
-  using EventCallback = std::function<void(const Event &)>;
-  using TickCallback = std::function<void()>;
 
-  TradingEngine()
-      : m_PoolResource(), m_EventQueue(), m_Orderbook(m_EventQueue),
-        m_CommandQueue(m_Orderbook) {};
+  explicit TradingEngine() noexcept = default;
 
   TradingEngine(const TradingEngine &) = delete;
   TradingEngine &operator=(const TradingEngine &) = delete;
   TradingEngine(TradingEngine &&) = delete;
   TradingEngine &operator=(TradingEngine &&) = delete;
 
-  ~TradingEngine() { Stop(); }
-
-  void OnEvent(EventCallback callback) {
-    m_EventCallback = std::move(callback);
-  }
-
-  void OnTick(TickCallback callback) { m_TickCallback = std::move(callback); }
-
-  void SetTickRate(std::chrono::nanoseconds rate) { m_TickRate = rate; }
+  ~TradingEngine() = default;
 
   void Start() {
-    m_CommandQueue.Start();
-    m_Running.store(true, std::memory_order::release);
-    m_Thread = std::thread([this] { Run(); });
+    m_Thread = std::jthread([this](std::stop_token st) { Run(st); });
   };
 
-  void Stop() {
-    m_Running.store(false, std::memory_order::release);
-    if (m_Thread.joinable())
-      m_Thread.join();
-  }
+  void Stop() { m_Thread.request_stop(); }
 
-  Event GetEvent() {
-    Event event;
-    while (m_EventQueue.try_pop(event))
-      return event;
-    return Event{};
-  }
-
-  void AddOrder(ClientID clientID, ClientOrderID clientOrderID, Price price,
-                Quantity quantity, Side side, OrderType order_type,
-                TimeInForce tif, Flags flags) {
-    m_CommandQueue.PushCommand(CommandTypes::AddOrder{
-        clientID, price, quantity, side, order_type, tif, flags});
+  void AddOrder(ClientID clientID, Price price, Quantity quantity, Side side,
+                OrderType order_type, TimeInForce tif, Flags flags) {
+    m_CommandQueue.push(CommandTypes::AddOrder{clientID, price, quantity, side,
+                                               order_type, tif, flags});
   }
 
   void ModifyOrder(ClientID clientID, OrderID orderID, Price new_price,
                    Quantity new_quantity) {
-    m_CommandQueue.PushCommand(
+    m_CommandQueue.push(
         CommandTypes::ModifyOrder{clientID, orderID, new_price, new_quantity});
   }
 
   void CancelOrder(ClientID clientID, OrderID orderID) {
-    m_CommandQueue.PushCommand(CommandTypes::CancelOrder{clientID, orderID});
+    m_CommandQueue.push(CommandTypes::CancelOrder{clientID, orderID});
   }
 
-  // TODO: many thread read snapshot, one thread should update snapshot
+  // TODO: many clients read snapshot, one thread should update snapshot
   OrderBookSnapshot GetSnapshot() {
     std::lock_guard<std::mutex> lock(m_SnapshotMutex);
     return m_LatestSnapshot;
@@ -81,37 +58,58 @@ public:
     m_LatestSnapshot = std::move(snapshot);
   }
 
+  [[nodiscard]]
+  bool TryGetEvent(Event &out) noexcept {
+    return m_EventQueue.try_pop(out);
+  }
+
+  void HandleEvent(const ob::engine::Event &event) {
+    using namespace ob::engine::EventTypes;
+    event.Decompose(
+        [](std::monostate) {}, [](const OrderAccepted &event) {},
+        [](const OrderExpired &event) {}, [](const OrderRejected &event) {},
+        [](const ModifyAccepted &event) {}, [](const ModifyRejected &event) {},
+        [](const CancelAccepted &event) {}, [](const CancelRejected &event) {},
+        [](const auto &other_events) {});
+  }
+
 private:
-  std::pmr::unsynchronized_pool_resource m_PoolResource;
+  Book m_Orderbook{};
+  data::ThreadSafeQueue<Command> m_CommandQueue; // TODO: replace with MPSC
+  data::SPSC_Queue<Event, EventCapacity> m_EventQueue;
 
-  EventQueue m_EventQueue;
-  Book m_Orderbook;
-  CommandQueue<Book> m_CommandQueue; // must be destructed after orderbook
+  OrderBookSnapshot m_LatestSnapshot{};
+  std::mutex m_SnapshotMutex{};
 
-  OrderBookSnapshot m_LatestSnapshot;
-  std::mutex m_SnapshotMutex;
+  std::jthread m_Thread;
 
-  EventCallback m_EventCallback;
-  TickCallback m_TickCallback;
-  std::chrono::nanoseconds m_TickRate{std::chrono::microseconds{100}};
-  std::atomic<bool> m_Running{false};
-  std::thread m_Thread;
+  void Run(std::stop_token st) {
+    static constexpr auto TickRate = std::chrono::nanoseconds{TickRateNs};
 
-  void Run() {
-    while (m_Running.load(std::memory_order::relaxed)) {
-      auto tick_start = std::chrono::high_resolution_clock::now();
+    Command cmd;
+    while (!st.stop_requested()) [[likely]] {
+      const auto tick_start = std::chrono::steady_clock::now();
 
-      if (m_TickCallback)
-        m_TickCallback();
-
-      Event event;
-      while (m_EventQueue.try_pop(event)) {
-        if (m_EventCallback)
-          m_EventCallback(event);
+      while (m_CommandQueue.try_pop(cmd)) [[likely]] {
+        auto events = m_Orderbook.Apply(cmd);
+        for (const auto &event : events)
+          HandleEvent(event);
       }
 
-      std::this_thread::sleep_until(tick_start + m_TickRate);
+      std::this_thread::sleep_for(TickRate);
     }
+
+    while (m_CommandQueue.try_pop(cmd))
+      auto events = m_Orderbook.Apply(cmd);
   }
 };
+
+// Trading Engine Factory
+template <class MatchingStrategy, u64 TickRateNs = 100'000,
+          u64 CommandCapacity = (2 << 16), u64 EventCapacity = (2 << 16)>
+[[nodiscard]] auto MakeTradingEngine() {
+  using Engine = TradingEngine<MatchingStrategy, TickRateNs, CommandCapacity,
+                               EventCapacity>;
+  return std::make_unique<Engine>();
+}
 } // namespace ob::engine

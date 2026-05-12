@@ -1,5 +1,6 @@
 #pragma once
 
+#include <immintrin.h>
 #include <vector>
 
 #include "Order.hpp"

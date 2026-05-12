@@ -2,6 +2,7 @@
 
 #include <variant>
 
+#include "Core/Trade.hpp"
 #include "globals.hpp"
 
 namespace ob::engine {
@@ -9,12 +10,12 @@ namespace ob::engine {
 enum class EventType {
   None = 0,
   OrderAccepted,
-  OrderExpired,
   OrderRejected,
   ModifyAccepted,
   ModifyRejected,
   CancelAccepted,
   CancelRejected,
+  Trade,
 };
 
 enum class ErrorCode {
@@ -24,19 +25,17 @@ enum class ErrorCode {
   InvalidModify,
   InvalidCancel,
   InsufficientLiquidity,
-  PostOnlyViolation
+  PostOnlyViolation,
+  InvalidOrderCombination,
+  NotImplemented,
+  UnsupportedTimeInForce,
+  Unauthorized
 };
 
 namespace EventTypes {
 struct OrderAccepted {
   ClientID clientID;
   OrderID orderID;
-};
-
-struct OrderExpired {
-  ClientID clientID;
-  OrderID orderID;
-  Quantity remaining_quantity;
 };
 
 struct OrderRejected {
@@ -66,16 +65,15 @@ struct CancelRejected {
   OrderID orderID;
   ErrorCode errorCode;
 };
-
 } // namespace EventTypes
 
 class Event {
 public:
   using EventVariant =
       std::variant<std::monostate, EventTypes::OrderAccepted,
-                   EventTypes::OrderExpired, EventTypes::OrderRejected,
-                   EventTypes::ModifyAccepted, EventTypes::ModifyRejected,
-                   EventTypes::CancelAccepted, EventTypes::CancelRejected>;
+                   EventTypes::OrderRejected, EventTypes::ModifyAccepted,
+                   EventTypes::ModifyRejected, EventTypes::CancelAccepted,
+                   EventTypes::CancelRejected, Trade>;
 
   Event() = default;
   Event(const EventVariant &v) : m_Variant(v) {}
@@ -86,12 +84,8 @@ public:
           using T = std::decay_t<decltype(arg)>;
           if constexpr (std::is_same_v<T, std::monostate>)
             return EventType::None;
-          else if constexpr (std::is_same_v<T, std::monostate>)
-            return EventType::OrderAccepted;
           else if constexpr (std::is_same_v<T, EventTypes::OrderAccepted>)
-            return EventType::OrderExpired;
-          else if constexpr (std::is_same_v<T, EventTypes::OrderExpired>)
-            return EventType::OrderRejected;
+            return EventType::OrderAccepted;
           else if constexpr (std::is_same_v<T, EventTypes::OrderRejected>)
             return EventType::OrderRejected;
           else if constexpr (std::is_same_v<T, EventTypes::ModifyAccepted>)
@@ -102,6 +96,8 @@ public:
             return EventType::CancelAccepted;
           else if constexpr (std::is_same_v<T, EventTypes::CancelRejected>)
             return EventType::CancelRejected;
+          else if constexpr (std::is_same_v<T, Trade>)
+            return EventType::Trade;
         },
         m_Variant);
   }

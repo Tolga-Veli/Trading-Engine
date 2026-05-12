@@ -2,7 +2,6 @@
 
 #include "globals.hpp"
 
-#include <span>
 #include <variant>
 
 namespace ob::engine {

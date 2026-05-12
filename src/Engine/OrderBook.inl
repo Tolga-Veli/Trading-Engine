@@ -4,29 +4,28 @@
 #include "OrderBook.hpp"
 #endif
 
-#include <cassert>
-
 #include "Order.hpp"
 #include "OrderBookSnapshot.hpp"
+#include "Trade.hpp"
 #include "globals.hpp"
 
 namespace ob::engine {
 
 template <class MatchingStrategy>
-ErrorCode OrderBook<MatchingStrategy>::AddOrder(
-    const ClientID &clientID, const Price &price, const Quantity &quantity,
-    const Side &side, const OrderType &order_type, const TimeInForce &tif,
-    const Flags &flags) {
+ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
+    ClientID clientID, Price price, Quantity quantity, Side side,
+    OrderType order_type, TimeInForce tif, MatchType match_type,
+    Flags flags) noexcept {
 
-  if (tif == TimeInForce::FillOrKill) {
+  if (tif == TimeInForce::FillOrKill) [[unlikely]] {
     Quantity available = 0;
+
     if (side == Side::Buy) {
       for (const auto &[ask_price, level_data] : m_Asks) {
         if (order_type != OrderType::Market && price < ask_price)
           break;
 
         available += level_data.volume;
-
         if (available >= quantity)
           break;
       }
@@ -36,141 +35,157 @@ ErrorCode OrderBook<MatchingStrategy>::AddOrder(
           break;
 
         available += level_data.volume;
-
         if (available >= quantity)
           break;
       }
     }
 
-    if (quantity > available)
+    if (quantity > available) [[unlikely]]
       return ErrorCode::InsufficientLiquidity;
   }
 
-  m_OrderCounter++;
-  Order order{m_OrderCounter, clientID,   price, quantity,
-              side,           order_type, tif,   flags};
+  // PostOnly pre-check (Limit orders only)
+  if (order_type == OrderType::Limit &&
+      (flags & Flags::PostOnly) == Flags::PostOnly) [[unlikely]] {
 
-  // Post Only
-  if (order_type != OrderType::Limit &&
-      (flags & Flags::PostOnly) == Flags::PostOnly) {
     bool match = false;
     if (side == Side::Buy && !m_Asks.empty() && price >= m_Asks.begin()->first)
       match = true;
     if (side == Side::Sell && !m_Bids.empty() && price <= m_Bids.begin()->first)
       match = true;
 
-    if (match)
+    if (match) [[unlikely]]
       return ErrorCode::PostOnlyViolation;
   }
 
+  const OrderID new_id = m_OrderCounter++;
+  Order order{new_id,     clientID, price,      quantity, side,
+              order_type, tif,      match_type, flags};
+
   m_MatchingStrategy.Match(order, *this);
 
-  if (order.GetRemainingQuantity() == 0)
+  if (order.GetRemainingQuantity() == 0) [[likely]]
     return ErrorCode::Success;
 
-  bool fl = true;
+  bool shouldRestOnBook = false;
   switch (tif) {
   case TimeInForce::ImmediateOrCancel:
   case TimeInForce::FillOrKill:
   case TimeInForce::FillAndKill:
-    fl = false;
+    shouldRestOnBook = false;
     break;
   case TimeInForce::DayOrder:
   case TimeInForce::GoodTillCancelled:
-    fl = (order_type != OrderType::Market);
+    if (order_type == OrderType::Market) [[unlikely]]
+      return ErrorCode::InvalidOrderCombination;
+
+    shouldRestOnBook = true;
     break;
+  case TimeInForce::GoodTillDate:
+  case TimeInForce::AtTheOpening:
+    return ErrorCode::NotImplemented;
+  default:
+    return ErrorCode::UnsupportedTimeInForce;
   }
 
-  if (!fl)
+  if (!shouldRestOnBook)
     return ErrorCode::Success;
 
   if (side == Side::Buy) {
-    auto [level_it, inserted] =
-        m_Bids.try_emplace(price, LevelData{&m_PoolResource});
-    if ((flags & Flags::Hidden) == Flags::None)
-      level_it->second.volume += order.GetRemainingQuantity();
-    auto &list = level_it->second.orders;
+    auto [level_it, inserted] = m_Bids.try_emplace(price, LevelData{&m_Pool});
 
+    const Quantity remaining = order.GetRemainingQuantity();
+    if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+      level_it->second.volume += remaining;
+
+    auto &list = level_it->second.orders;
     list.emplace_back(std::move(order));
-    m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
+    m_Orders.emplace(new_id, OrderEntry{std::prev(list.end()), level_it});
+
   } else {
-    auto [level_it, inserted] =
-        m_Asks.try_emplace(price, LevelData{&m_PoolResource});
-    if ((flags & Flags::Hidden) == Flags::None)
-      level_it->second.volume += order.GetRemainingQuantity();
-    auto &list = level_it->second.orders;
+    auto [level_it, inserted] = m_Asks.try_emplace(price, LevelData{&m_Pool});
 
+    const Quantity remaining = order.GetRemainingQuantity();
+    if ((flags & Flags::Hidden) == Flags::None) [[likely]]
+      level_it->second.volume += remaining;
+
+    auto &list = level_it->second.orders;
     list.emplace_back(std::move(order));
-    m_Orders[m_OrderCounter] = {std::prev(list.end()), level_it};
+    m_Orders.emplace(new_id, OrderEntry{std::prev(list.end()), level_it});
   }
 
   return ErrorCode::Success;
 }
 
 template <class MatchingStrategy>
-ErrorCode OrderBook<MatchingStrategy>::ModifyOrder(
-    const ClientID &clientID, const OrderID &orderID, const Price &new_price,
-    const Quantity &new_quantity) {
+ErrorCode OrderBook<MatchingStrategy>::InternalModifyOrder(
+    ClientID clientID, OrderID orderID, Price new_price,
+    Quantity new_quantity) noexcept {
+
   auto it = m_Orders.find(orderID);
-  if (it == m_Orders.end())
+  if (it == m_Orders.end()) [[unlikely]]
     return ErrorCode::InvalidModify;
 
-  auto &entry = it->second;
-  auto list_it = entry.list_iterator;
-  auto map_it = entry.map_iterator;
+  const auto list_it = it->second.list_it;
+  const auto level_it = it->second.level_it;
 
-  const OrderID old_orderID = list_it->GetOrderID();
   const Price old_price = list_it->GetPrice();
   const Quantity old_quantity = list_it->GetRemainingQuantity();
+
+  if (list_it->GetClientID() != clientID) [[unlikely]]
+    return ErrorCode::Unauthorized;
+
   const Side side = list_it->GetSide();
   const OrderType type = list_it->GetOrderType();
   const TimeInForce tif = list_it->GetTimeInForce();
   const Flags flags = list_it->GetFlags();
 
   if (new_price != old_price || new_quantity > old_quantity) {
-    if (auto code = CancelOrder(clientID, orderID); code != ErrorCode::Success)
-      return code;
+    if (const auto code = InternalCancelOrder(clientID, orderID);
+        code != ErrorCode::Success) [[unlikely]]
+      return ErrorCode::InvalidModify;
 
-    if (auto code =
-            AddOrder(clientID, new_price, new_quantity, side, type, tif, flags);
+    if (const auto code = InternalAddOrder(clientID, new_price, new_quantity,
+                                           side, type, tif, flags);
         code != ErrorCode::Success)
-      return code;
+      return ErrorCode::InvalidModify;
 
   } else if (new_quantity < old_quantity) {
-    Quantity diff = list_it->UpdateQuantity(new_quantity);
-    if ((flags & Flags::Hidden) == Flags::None)
-      map_it->second.volume += diff;
+    const Quantity diff = list_it->UpdateQuantity(new_quantity);
+    if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+      level_it->second.volume -= diff;
   }
 
   return ErrorCode::Success;
 }
 
 template <class MatchingStrategy>
-ErrorCode OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
-                                                   const OrderID &orderID) {
+ErrorCode
+OrderBook<MatchingStrategy>::InternalCancelOrder(ClientID clientID,
+                                                 OrderID orderID) noexcept {
   auto entry_it = m_Orders.find(orderID);
-  if (entry_it == m_Orders.end())
+  if (entry_it == m_Orders.end()) [[unlikely]]
     return ErrorCode::InvalidCancel;
 
-  auto &order_entry = entry_it->second;
-  auto list_it = order_entry.list_iterator;
-  auto map_it = order_entry.map_iterator;
-
+  const auto list_it = entry_it->second.list_it;
+  const auto level_it = entry_it->second.level_it;
   const Side side = list_it->GetSide();
   const Flags flags = list_it->GetFlags();
 
-  if ((flags & Flags::Hidden) == Flags::None)
-    map_it->second.volume -= list_it->GetRemainingQuantity();
+  if (list_it->GetClientID() != clientID) [[unlikely]]
+    return ErrorCode::Unauthorized;
 
-  auto &orderList = map_it->second.orders;
-  orderList.erase(list_it);
+  if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+    level_it->second.volume -= list_it->GetRemainingQuantity();
+
+  level_it->second.orders.erase(list_it);
   m_Orders.erase(entry_it);
 
-  if (orderList.empty()) {
+  if (level_it->second.orders.empty()) [[unlikely]] {
     if (side == Side::Buy)
-      m_Bids.erase(map_it);
+      m_Bids.erase(level_it);
     else
-      m_Asks.erase(map_it);
+      m_Asks.erase(level_it);
   }
 
   return ErrorCode::Success;
@@ -179,42 +194,47 @@ ErrorCode OrderBook<MatchingStrategy>::CancelOrder(const ClientID &clientID,
 template <class MatchingStrategy>
 const Order *
 OrderBook<MatchingStrategy>::FindOrder(const OrderID &orderID) const noexcept {
-  auto entry_it = m_Orders.find(orderID);
-  if (entry_it == m_Orders.end())
+  const auto it = m_Orders.find(orderID);
+  if (it == m_Orders.end()) [[unlikely]]
     return nullptr;
-  return &(*entry_it->second.list_iterator);
+  else
+    return &(*it->second.list_it);
 }
 
 template <class MatchingStrategy>
 Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
-  if (m_Bids.empty())
+  if (m_Bids.empty()) [[unlikely]]
     return nullptr;
-  return &(m_Bids.begin()->second.orders.front());
+  else
+    return &(m_Bids.begin()->second.orders.front());
 }
 
 template <class MatchingStrategy>
 Order *OrderBook<MatchingStrategy>::GetBestAsk() noexcept {
-  if (m_Asks.empty())
+  if (m_Asks.empty()) [[unlikely]]
     return nullptr;
-  return &(m_Asks.begin()->second.orders.front());
+  else
+    return &(m_Asks.begin()->second.orders.front());
 }
 
 template <class MatchingStrategy>
 Quantity
 OrderBook<MatchingStrategy>::GetBidVolumeAtPrice(Price price) const noexcept {
-  auto level_it = m_Bids.find(price);
-  if (level_it == m_Bids.end())
-    return 0;
-  return level_it->second.volume;
+  const auto it = m_Bids.find(price);
+  if (it != m_Bids.end())
+    return it->second.volume;
+  else
+    return Quantity{0};
 }
 
 template <class MatchingStrategy>
 Quantity
 OrderBook<MatchingStrategy>::GetAskVolumeAtPrice(Price price) const noexcept {
-  auto level_it = m_Asks.find(price);
-  if (level_it == m_Asks.end())
-    return 0;
-  return level_it->second.volume;
+  const auto it = m_Asks.find(price);
+  if (it != m_Asks.end())
+    return it->second.volume;
+  else
+    return Quantity{0};
 }
 
 template <class MatchingStrategy>
@@ -224,19 +244,87 @@ OrderBook<MatchingStrategy>::GetSnapshot(uint32_t depth) const noexcept {
   snapshot.bids.reserve(depth), snapshot.asks.reserve(depth);
 
   u32 curr = 0;
-  for (const auto &[price, level_data] : m_Bids) {
+  for (const auto &[price, level] : m_Bids) {
     if (++curr > depth)
       break;
-    snapshot.bids.push_back({price, level_data.volume});
+    snapshot.bids.push_back({price, level.volume});
   }
 
   curr = 0;
-  for (const auto &[price, level_data] : m_Asks) {
+  for (const auto &[price, level] : m_Asks) {
     if (++curr > depth)
       break;
-    snapshot.asks.push_back({price, level_data.volume});
+    snapshot.asks.push_back({price, level.volume});
   }
   return snapshot;
 }
 
+template <class MatchingStrategy>
+void OrderBook<MatchingStrategy>::RecordFill(OrderID makerOrderID,
+                                             OrderID takerOrderID, Price price,
+                                             Quantity quantity, Side takerSide,
+                                             MatchType match_type) noexcept {
+  if (takerSide == Side::Buy) {
+    auto it = m_Bids.find(price);
+    if (it != m_Bids.end()) [[likely]] {
+      it->second.volume -= quantity;
+
+      if (it->second.volume == 0 && it->second.orders.empty()) [[unlikely]]
+        m_Bids.erase(it);
+    }
+
+  } else {
+    auto it = m_Asks.find(price);
+    if (it != m_Asks.end()) [[likely]] {
+      it->second.volume -= quantity;
+      if (it->second.volume == 0 && it->second.orders.empty()) [[unlikely]]
+        m_Asks.erase(it);
+    }
+  }
+
+  if (m_ScratchCounter < MaxEventsPerCommand) [[likely]] {
+    t_EventScratch[m_ScratchCounter++] =
+        Event{Trade{m_TradeCounter++, makerOrderID, takerOrderID, price,
+                    quantity, takerSide, match_type}};
+  }
+}
+
+template <class T>
+void OrderBook<T>::Handle(const CommandTypes::AddOrder &cmd) noexcept {
+  const auto code =
+      InternalAddOrder(cmd.clientID, cmd.price, cmd.quantity, cmd.side,
+                       cmd.order_type, cmd.tif, cmd.flags);
+
+  if (code == ErrorCode::Success) [[likely]]
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::OrderAccepted{cmd.clientID, m_OrderCounter - 1}};
+  else
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::OrderRejected{cmd.clientID, code}};
+}
+
+template <class T>
+void OrderBook<T>::Handle(const CommandTypes::ModifyOrder &cmd) noexcept {
+  const auto code = InternalModifyOrder(cmd.clientID, cmd.orderID,
+                                        cmd.new_price, cmd.new_quantity);
+
+  if (code == ErrorCode::Success) [[likely]]
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::ModifyAccepted{cmd.clientID, cmd.orderID}};
+  else
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::ModifyRejected{cmd.clientID, cmd.orderID}};
+}
+
+template <class T>
+void OrderBook<T>::Handle(const CommandTypes::CancelOrder &cmd) noexcept {
+  const auto code = InternalCancelOrder(cmd.clientID, cmd.orderID);
+
+  if (code == ErrorCode::Success) [[likely]]
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::CancelAccepted{cmd.clientID, cmd.orderID}};
+  else
+    t_EventScratch[m_ScratchCounter++] =
+        Event{EventTypes::CancelRejected{cmd.clientID, cmd.orderID, code}};
+}
 } // namespace ob::engine

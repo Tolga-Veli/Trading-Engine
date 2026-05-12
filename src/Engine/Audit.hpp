@@ -1,6 +1,5 @@
 #pragma once
 
-#include <atomic>
 #include <thread>
 #include <variant>
 
@@ -28,7 +27,7 @@ private:
   AuditDataVariant m_Variant;
 };
 
-class Audit {
+template <u64 TickRateMs = 1000> class Audit {
 public:
   Audit()
       : m_SnapshotsLog(m_LoggingFolder / "Snapshots.journal"),
@@ -36,39 +35,53 @@ public:
         m_EventsLog(m_LoggingFolder / "Events.journal"),
         m_TradesLog(m_LoggingFolder / "Trades.journal") {}
 
-  ~Audit() {
-    m_Running.store(false, std::memory_order::acquire);
-    if (m_AuditThread.joinable())
-      m_AuditThread.join();
+  ~Audit() { Stop(); }
+
+  void Start() {
+    if (m_Thread.joinable()) [[unlikely]]
+      return;
+
+    m_Thread = std::jthread([this](std::stop_token stoken) { Run(stoken); });
   }
 
-  void Start() { m_Running.store(true, std::memory_order::acquire); }
-
   void Stop() {
-    m_Running.store(false, std::memory_order::acquire);
+    m_Queue.close();
+    if (m_Thread.joinable()) {
+      m_Thread.request_stop();
+      m_Thread.join();
+    }
+  }
+
+  void FlushAll() {
     m_SnapshotsLog.WriteBufferToFile();
     m_CommandsLog.WriteBufferToFile();
     m_EventsLog.WriteBufferToFile();
     m_TradesLog.WriteBufferToFile();
   }
 
-  void Run() {
-    while (m_Running.load(std::memory_order::acq_rel)) {
+  template <typename U> void Enqueue(U &&data) {
+    m_Queue.push(AuditData{std::forward<U>(data)});
+  }
 
-      AuditData buf;
-      while (!m_Queue.try_pop(buf)) {
-        buf.Decompose(
-            [](std::monostate) {},
-            [this](const Command &cmd) { m_CommandsLog.WriteToBuffer(cmd); },
-            [this](const AuditBookSnapshot &snapshot) {
-              m_SnapshotsLog.WriteToBuffer(snapshot);
-            },
-            [this](const Event &event) { m_EventsLog.WriteToBuffer(event); },
-            [this](const Trade &trade) { m_TradesLog.WriteToBuffer(trade); },
-            [](const auto &other) {});
-      }
+  void Run(std::stop_token stoken) {
+    static constexpr std::chrono::milliseconds TickRate =
+        std::chrono::milliseconds{1000};
 
-      std::this_thread::sleep_for(m_TickRate);
+    AuditData data;
+    while (!stoken.stop_requested() && m_Queue.wait_and_pop(data)) {
+      data.Decompose(
+          [](std::monostate) {},
+          [this](const Command &cmd) { m_CommandsLog.WriteToBuffer(cmd); },
+          [this](const AuditBookSnapshot &snapshot) {
+            m_SnapshotsLog.WriteToBuffer(snapshot);
+          },
+          [this](const Event &event) { m_EventsLog.WriteToBuffer(event); },
+          [this](const Trade &trade) { m_TradesLog.WriteToBuffer(trade); },
+          [](const auto &other) {});
+
+      const auto now = std::chrono::steady_clock::now();
+
+      std::this_thread::sleep_until(now + TickRate);
     }
   }
 
@@ -77,9 +90,6 @@ private:
   OutputFileStream m_SnapshotsLog, m_CommandsLog, m_EventsLog, m_TradesLog;
 
   data::ThreadSafeQueue<AuditData> m_Queue;
-
-  std::atomic<bool> m_Running{false};
-  std::chrono::milliseconds m_TickRate{1000};
-  std::thread m_AuditThread;
+  std::jthread m_Thread;
 };
 } // namespace ob::engine

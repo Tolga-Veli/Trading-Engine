@@ -6,8 +6,10 @@
 
 namespace ob {
 namespace engine {
+
 template <class Strategy> class OrderBook;
-}
+
+} // namespace engine
 
 namespace matching {
 

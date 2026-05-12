@@ -20,10 +20,9 @@ using u64 = std::uint64_t;
 
 using ClientID = u64;
 using OrderID = u64;
-using ClientOrderID = u64;
 using TradeID = u64;
 using Price = i64; // in 1/10th of a cent therefore  1000 = 1$
-using Quantity = i64;
+using Quantity = u64;
 using Time = std::chrono::nanoseconds;
 
 template <typename... Fs> struct Overloaded : Fs... {
@@ -37,11 +36,13 @@ enum class Side { Buy = 0, Sell };
 enum class OrderType { Limit = 0, Market, Stop, StopLimit };
 
 enum class TimeInForce {
-  GoodTillCancelled = 0,
-  DayOrder,
-  ImmediateOrCancel,
-  FillOrKill,
-  FillAndKill
+  GoodTillCancelled = 0, // Supported
+  DayOrder,              // Not supported
+  ImmediateOrCancel,     // Supported
+  FillOrKill,            // Supported
+  FillAndKill,           // Supported
+  GoodTillDate,          // Not supported
+  AtTheOpening,          // Not supported
 };
 
 enum class MatchType {
@@ -93,33 +94,39 @@ inline constexpr std::string_view to_string(Side side) {
 }
 
 inline constexpr std::string_view to_string(OrderType order_type) {
+  using enum OrderType;
   switch (order_type) {
-  case OrderType::Limit:
+  case Limit:
     return "Limit";
-  case OrderType::Market:
+  case Market:
     return "Market";
-  case OrderType::Stop:
+  case Stop:
     return "Stop";
-  case OrderType::StopLimit:
+  case StopLimit:
     return "StopLimit";
+  default:
+    return "";
   }
-  return "";
 }
 
 inline constexpr std::string_view to_string(TimeInForce tif) {
+  using enum TimeInForce;
   switch (tif) {
-  case TimeInForce::DayOrder:
+  case DayOrder:
     return "DayOrder";
-  case TimeInForce::GoodTillCancelled:
+  case GoodTillCancelled:
     return "GoodTillCancelled";
-  case TimeInForce::ImmediateOrCancel:
+  case ImmediateOrCancel:
     return "ImmediateOrCancel";
-  case TimeInForce::FillOrKill:
+  case FillOrKill:
     return "FillOrKill";
-  case TimeInForce::FillAndKill:
+  case FillAndKill:
     return "FillAndKill";
+  case GoodTillDate:
+    return "GoodTillDate";
+  default:
+    return "";
   }
-  return "";
 }
 
 inline std::string to_string(Flags flag) {
@@ -141,17 +148,19 @@ inline std::string to_string(Flags flag) {
 }
 
 inline constexpr std::string_view to_string(MatchType matchType) {
+  using enum MatchType;
   switch (matchType) {
-  case MatchType::Standard:
+  case Standard:
     return "Standard";
-  case MatchType::Midpoint:
+  case Midpoint:
     return "Midpoint";
-  case MatchType::HiddenLiquidity:
+  case HiddenLiquidity:
     return "HiddenLiquidity";
-  case MatchType::Auction:
+  case Auction:
     return "Auction";
+  default:
+    return "";
   }
-  return "";
 }
 
 inline static Time GetCurrentTime() {
