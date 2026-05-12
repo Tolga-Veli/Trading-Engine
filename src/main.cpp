@@ -9,7 +9,7 @@ int main() {
 
   constexpr std::chrono::microseconds EngineTickRate{100};
   constexpr std::chrono::milliseconds FrameTime{50};
-  std::mt19937 rng{123};
+  std::mt19937 rng{1};
   std::uniform_int_distribution<uint32_t> dist{1, 1000};
 
   std::chrono::time_point<std::chrono::steady_clock> LastRenderTime{
@@ -37,10 +37,12 @@ int main() {
 
     TradingEngine->AddOrder(ClientID{1}, Price{dist(rng)}, Quantity{dist(rng)},
                             Side::Buy, OrderType::Limit,
-                            TimeInForce::GoodTillCancelled, Flags::None);
+                            TimeInForce::GoodTillCancelled, MatchType::Standard,
+                            Flags::None);
 
     TradingEngine->AddOrder(ClientID{2}, Price{dist(rng)}, Quantity{dist(rng)},
                             Side::Sell, OrderType::Limit,
-                            TimeInForce::GoodTillCancelled, Flags::None);
+                            TimeInForce::GoodTillCancelled, MatchType::Standard,
+                            Flags::None);
   }
 }

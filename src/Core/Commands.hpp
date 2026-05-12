@@ -15,6 +15,7 @@ struct AddOrder {
   Side side;
   OrderType order_type;
   TimeInForce tif;
+  MatchType match_type;
   Flags flags;
 };
 

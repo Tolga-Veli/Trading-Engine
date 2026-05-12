@@ -31,9 +31,10 @@ public:
   void Stop() { m_Thread.request_stop(); }
 
   void AddOrder(ClientID clientID, Price price, Quantity quantity, Side side,
-                OrderType order_type, TimeInForce tif, Flags flags) {
-    m_CommandQueue.push(CommandTypes::AddOrder{clientID, price, quantity, side,
-                                               order_type, tif, flags});
+                OrderType order_type, TimeInForce tif, MatchType match_type,
+                Flags flags) {
+    m_CommandQueue.push(CommandTypes::AddOrder{
+        clientID, price, quantity, side, order_type, tif, match_type, flags});
   }
 
   void ModifyOrder(ClientID clientID, OrderID orderID, Price new_price,
@@ -67,10 +68,9 @@ public:
     using namespace ob::engine::EventTypes;
     event.Decompose(
         [](std::monostate) {}, [](const OrderAccepted &event) {},
-        [](const OrderExpired &event) {}, [](const OrderRejected &event) {},
-        [](const ModifyAccepted &event) {}, [](const ModifyRejected &event) {},
-        [](const CancelAccepted &event) {}, [](const CancelRejected &event) {},
-        [](const auto &other_events) {});
+        [](const OrderRejected &event) {}, [](const ModifyAccepted &event) {},
+        [](const ModifyRejected &event) {}, [](const CancelAccepted &event) {},
+        [](const CancelRejected &event) {}, [](const auto &other_events) {});
   }
 
 private:

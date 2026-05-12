@@ -9,6 +9,8 @@
 #include "Trade.hpp"
 #include "globals.hpp"
 
+#include <cassert>
+
 namespace ob::engine {
 
 template <class MatchingStrategy>
@@ -16,6 +18,12 @@ ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
     ClientID clientID, Price price, Quantity quantity, Side side,
     OrderType order_type, TimeInForce tif, MatchType match_type,
     Flags flags) noexcept {
+
+  if (match_type != MatchType::Standard) {
+    HERMES_ERROR(
+        "No implementation of matching types different than standard!");
+    return ErrorCode::InvalidRequest;
+  }
 
   if (tif == TimeInForce::FillOrKill) [[unlikely]] {
     Quantity available = 0;
@@ -95,7 +103,7 @@ ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
     auto [level_it, inserted] = m_Bids.try_emplace(price, LevelData{&m_Pool});
 
     const Quantity remaining = order.GetRemainingQuantity();
-    if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+    if ((flags & Flags::Hidden) == Flags::None) [[likely]]
       level_it->second.volume += remaining;
 
     auto &list = level_it->second.orders;
@@ -138,6 +146,7 @@ ErrorCode OrderBook<MatchingStrategy>::InternalModifyOrder(
   const Side side = list_it->GetSide();
   const OrderType type = list_it->GetOrderType();
   const TimeInForce tif = list_it->GetTimeInForce();
+  const MatchType match_type = list_it->GetMatchType();
   const Flags flags = list_it->GetFlags();
 
   if (new_price != old_price || new_quantity > old_quantity) {
@@ -146,13 +155,13 @@ ErrorCode OrderBook<MatchingStrategy>::InternalModifyOrder(
       return ErrorCode::InvalidModify;
 
     if (const auto code = InternalAddOrder(clientID, new_price, new_quantity,
-                                           side, type, tif, flags);
+                                           side, type, tif, match_type, flags);
         code != ErrorCode::Success)
       return ErrorCode::InvalidModify;
 
   } else if (new_quantity < old_quantity) {
     const Quantity diff = list_it->UpdateQuantity(new_quantity);
-    if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+    if ((flags & Flags::Hidden) == Flags::None) [[likely]]
       level_it->second.volume -= diff;
   }
 
@@ -175,7 +184,7 @@ OrderBook<MatchingStrategy>::InternalCancelOrder(ClientID clientID,
   if (list_it->GetClientID() != clientID) [[unlikely]]
     return ErrorCode::Unauthorized;
 
-  if ((flags & Flags::Hidden) != Flags::Hidden) [[likely]]
+  if ((flags & Flags::Hidden) == Flags::None) [[likely]]
     level_it->second.volume -= list_it->GetRemainingQuantity();
 
   level_it->second.orders.erase(list_it);
@@ -277,6 +286,7 @@ void OrderBook<MatchingStrategy>::RecordFill(OrderID makerOrderID,
     auto it = m_Asks.find(price);
     if (it != m_Asks.end()) [[likely]] {
       it->second.volume -= quantity;
+
       if (it->second.volume == 0 && it->second.orders.empty()) [[unlikely]]
         m_Asks.erase(it);
     }
@@ -293,7 +303,7 @@ template <class T>
 void OrderBook<T>::Handle(const CommandTypes::AddOrder &cmd) noexcept {
   const auto code =
       InternalAddOrder(cmd.clientID, cmd.price, cmd.quantity, cmd.side,
-                       cmd.order_type, cmd.tif, cmd.flags);
+                       cmd.order_type, cmd.tif, cmd.match_type, cmd.flags);
 
   if (code == ErrorCode::Success) [[likely]]
     t_EventScratch[m_ScratchCounter++] =

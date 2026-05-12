@@ -23,12 +23,15 @@ void PriceTimePriority::Match(Order &order,
       order.Fill(quantity);
       top->Fill(quantity);
 
-      book.RecordFill(order.GetClientID(), top->GetClientID(), order.GetPrice(),
+      const Price exec_price = top->GetPrice();
+      book.RecordFill(order.GetClientID(), top->GetClientID(), exec_price,
                       quantity, top->GetSide(), order.GetMatchType());
 
       if (top->isFilled()) {
         const auto code =
             book.InternalCancelOrder(top->GetClientID(), top->GetOrderID());
+
+        top = nullptr;
         // TODO: Handle error
       }
     }
@@ -49,12 +52,15 @@ void PriceTimePriority::Match(Order &order,
       order.Fill(quantity);
       top->Fill(quantity);
 
-      book.RecordFill(order.GetClientID(), top->GetClientID(), order.GetPrice(),
+      const Price exec_price = top->GetPrice();
+      book.RecordFill(order.GetClientID(), top->GetClientID(), exec_price,
                       quantity, top->GetSide(), order.GetMatchType());
 
       if (top->isFilled()) {
         const auto code =
             book.InternalCancelOrder(top->GetClientID(), top->GetOrderID());
+
+        top = nullptr;
         // TODO: Handle error
       }
     }
