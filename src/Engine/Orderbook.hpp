@@ -1,5 +1,11 @@
 #pragma once
 
+#include "Core/Commands.hpp"
+#include "Core/Events.hpp"
+#include "Core/Order.hpp"
+#include "Core/OrderBookSnapshot.hpp"
+#include "Matching/Matching.hpp"
+
 #include <array>
 #include <list>
 #include <map>
@@ -7,14 +13,8 @@
 #include <unordered_map>
 #include <variant>
 
-#include "Core/Commands.hpp"
-#include "Core/Order.hpp"
-#include "Core/OrderBookSnapshot.hpp"
-#include "Events.hpp"
-#include "Matching/MatchingStrategy.hpp"
-
 namespace ob::engine {
-inline constexpr u32 MaxEventsPerCommand = 64;
+inline constexpr u32 MaxEventsPerCommand = 128;
 inline thread_local std::array<Event, MaxEventsPerCommand> t_EventScratch;
 
 // use alignas(64) so LevelData is not a cache boundary and cause an additional

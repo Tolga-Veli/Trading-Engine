@@ -1,13 +1,13 @@
 #pragma once
 
-#include <thread>
-#include <variant>
-
 #include "Core/Commands.hpp"
 #include "Core/Events.hpp"
 #include "Core/FileStream.hpp"
 #include "Core/OrderBookSnapshot.hpp"
-#include "Data Structures/ThreadSafeQueue.hpp"
+#include "Data-Structures/ThreadSafeQueue.hpp"
+
+#include <thread>
+#include <variant>
 
 namespace ob::engine {
 

@@ -1,9 +1,9 @@
 #pragma once
 
+#include "OrderBookSnapshot.hpp"
+
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
-
-#include "OrderBookSnapshot.hpp"
 
 namespace ob::render {
 class Renderer {

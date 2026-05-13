@@ -1,11 +1,10 @@
 #pragma once
 
-#include <immintrin.h>
-#include <vector>
-
 #include "Order.hpp"
 #include "Trade.hpp"
 #include "globals.hpp"
+
+#include <vector>
 
 namespace ob::engine {
 struct SnapshotLevel {

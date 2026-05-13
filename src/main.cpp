@@ -20,12 +20,19 @@ int main() {
                                 static_cast<u64>(EngineTickRate.count())>();
   TradingEngine->Start();
 
+  auto start = std::chrono::steady_clock::now();
+  constexpr std::chrono::seconds RunningTime{5};
+
+  u32 count = 0;
   bool m_Running{true};
   render::Renderer Renderer;
   while (m_Running) {
+    if (std::chrono::steady_clock::now() - start >= RunningTime)
+      break;
+
     if (const auto now = std::chrono::steady_clock::now();
         now - LastRenderTime > FrameTime) {
-      TradingEngine->UpdateSnapshot(50);
+      TradingEngine->UpdateSnapshot(100);
       Renderer.Render(TradingEngine->GetSnapshot());
       LastRenderTime = now;
     }
@@ -44,5 +51,10 @@ int main() {
                             Side::Sell, OrderType::Limit,
                             TimeInForce::GoodTillCancelled, MatchType::Standard,
                             Flags::None);
+    count++;
   }
+
+  TradingEngine->Stop();
+
+  std::cout << "Total count of orders: " << count << std::endl;
 }

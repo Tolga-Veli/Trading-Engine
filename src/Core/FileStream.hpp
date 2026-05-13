@@ -1,5 +1,7 @@
 #pragma once
 
+#include "globals.hpp"
+
 #include <concepts>
 #include <filesystem>
 #include <fstream>
@@ -7,8 +9,6 @@
 #include <string_view>
 #include <type_traits>
 #include <vector>
-
-#include "globals.hpp"
 
 namespace ob {
 

@@ -1,9 +1,9 @@
 #pragma once
 
-#include <variant>
-
-#include "Core/Trade.hpp"
+#include "Trade.hpp"
 #include "globals.hpp"
+
+#include <variant>
 
 namespace ob::engine {
 

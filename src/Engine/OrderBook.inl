@@ -4,12 +4,10 @@
 #include "OrderBook.hpp"
 #endif
 
-#include "Order.hpp"
-#include "OrderBookSnapshot.hpp"
-#include "Trade.hpp"
-#include "globals.hpp"
-
-#include <cassert>
+#include "Core/Order.hpp"
+#include "Core/OrderBookSnapshot.hpp"
+#include "Core/Trade.hpp"
+#include "Core/globals.hpp"
 
 namespace ob::engine {
 

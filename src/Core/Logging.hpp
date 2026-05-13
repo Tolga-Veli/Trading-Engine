@@ -1,11 +1,11 @@
 #pragma once
 
+#include "globals.hpp"
+
 #include <cstdint>
 #include <format>
 #include <iostream>
 #include <string_view>
-
-#include "globals.hpp"
 
 namespace ob::core {
 
