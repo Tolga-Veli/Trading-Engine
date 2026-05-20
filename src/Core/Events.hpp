@@ -5,7 +5,7 @@
 
 #include <cstring>
 
-namespace ob::engine {
+namespace Hermes::engine {
 
 enum class EventType : u8 {
   None = 0,
@@ -154,7 +154,7 @@ public:
     return event;
   }
 
-  [[nodiscard]] static EventPayload MakeTrade(Trade t) noexcept {
+  [[nodiscard]] static EventPayload MakeTrade(core::Trade t) noexcept {
     EventPayload event;
     event.m_EventType = EventType::Trade;
     event.m_Data.trade = t;
@@ -186,7 +186,7 @@ private:
     Events::ModifyRejected mod_rej;
     Events::CancelAccepted cancel_acc;
     Events::CancelRejected cancel_rej;
-    Trade trade;
+    core::Trade trade;
   } m_Data;
 
   // 1 bytes
@@ -200,4 +200,4 @@ static_assert(
     std::is_trivially_copyable_v<EventPayload>,
     "EventPayload must be trivially copyable for fast serialization!");
 
-} // namespace ob::engine
+} // namespace Hermes::engine

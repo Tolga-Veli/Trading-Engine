@@ -5,7 +5,7 @@
 #include "Commands.hpp"
 #include "Events.hpp"
 
-namespace ob::networking {
+namespace Hermes::network {
 using RequestID = std::uint64_t;
 
 struct Request {
@@ -20,5 +20,5 @@ struct Response {
   OrderID orderID;
   engine::ErrorCode error;
 };
-}; // namespace ob::networking
+}; // namespace Hermes::network
 //

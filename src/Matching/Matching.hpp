@@ -4,7 +4,7 @@
 
 #include <cstdint>
 
-namespace ob {
+namespace Hermes {
 namespace engine {
 
 template <class Strategy> class OrderBook;
@@ -15,11 +15,11 @@ namespace matching {
 
 struct PriceTimePriority {
 public:
-  void Match(Order &order, engine::OrderBook<PriceTimePriority> &book);
+  void Match(core::Order &order, engine::OrderBook<PriceTimePriority> &book);
 
 private:
   std::uint64_t m_Counter = 0;
 };
 
 } // namespace matching
-} // namespace ob
+} // namespace Hermes

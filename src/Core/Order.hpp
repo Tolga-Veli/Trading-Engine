@@ -3,7 +3,7 @@
 #include "Logging.hpp"
 #include "globals.hpp"
 
-namespace ob {
+namespace Hermes::core {
 class alignas(64) Order {
 public:
   Order() = delete;
@@ -107,4 +107,4 @@ private:
 
 static_assert(sizeof(Order) == 64, "Order size unexcpected");
 static_assert(std::is_trivially_copyable_v<Order>);
-} // namespace ob
+} // namespace Hermes::core

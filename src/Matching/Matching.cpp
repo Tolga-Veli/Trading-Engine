@@ -1,14 +1,14 @@
 #include "Matching.hpp"
 #include "Engine/OrderBook.hpp"
 
-namespace ob::matching {
-void PriceTimePriority::Match(Order &order,
+namespace Hermes::matching {
+void PriceTimePriority::Match(core::Order &order,
                               engine::OrderBook<PriceTimePriority> &book) {
   const Side side = order.GetSide();
 
   if (side == Side::Buy) {
     while (order.GetRemainingQuantity() > 0) {
-      Order *top = book.GetBestAsk();
+      core::Order *top = book.GetBestAsk();
 
       if (!top)
         break;
@@ -37,7 +37,7 @@ void PriceTimePriority::Match(Order &order,
     }
   } else {
     while (order.GetRemainingQuantity() > 0) {
-      Order *top = book.GetBestBid();
+      core::Order *top = book.GetBestBid();
 
       if (!top)
         break;
@@ -66,4 +66,4 @@ void PriceTimePriority::Match(Order &order,
     }
   }
 }
-} // namespace ob::matching
+} // namespace Hermes::matching

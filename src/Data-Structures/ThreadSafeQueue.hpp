@@ -5,7 +5,7 @@
 #include <queue>
 #include <utility>
 
-namespace ob::data {
+namespace Hermes::data {
 template <class T> class ThreadSafeQueue {
 public:
   ThreadSafeQueue() = default;
@@ -81,4 +81,4 @@ private:
   std::condition_variable m_CV;
   bool m_Closed{false};
 };
-}; // namespace ob::data
+}; // namespace Hermes::data

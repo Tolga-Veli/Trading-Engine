@@ -6,7 +6,7 @@
 #include <atomic>
 #include <concepts>
 
-namespace ob::data {
+namespace Hermes::data {
 template <class T, u32 Size>
   requires(Size > 0 && (Size & (Size - 1)) == 0)
 class SPSC_Queue {
@@ -63,4 +63,4 @@ private:
   alignas(64) std::atomic<u32> m_Tail{0};
   u32 m_HeadCache{0};
 };
-} // namespace ob::data
+} // namespace Hermes::data

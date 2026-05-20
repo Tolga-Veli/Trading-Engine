@@ -10,7 +10,40 @@
 #include <type_traits>
 #include <vector>
 
-namespace ob {
+namespace Hermes::core::io {
+
+inline std::string ReadFromFile(const std::filesystem::path &path) {
+  std::ifstream in(path, std::ios::in | std::ios::binary | std::ios::ate);
+
+  if (!in)
+    return "";
+
+  auto size = in.tellg();
+  if (size <= 0)
+    return "";
+
+  std::string result;
+  result.resize(size);
+
+  in.seekg(0, std::ios::beg);
+  if (!in.read(result.data(), size))
+    return "";
+
+  return result;
+}
+
+inline bool WriteToFile(const std::vector<std::byte> &buffer,
+                        const std::filesystem::path &path) {
+  std::ofstream out(path, std::ios::binary);
+
+  if (!out)
+    return false;
+
+  out.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
+  return out.good();
+}
+
+namespace fs = std::filesystem;
 
 template <class T>
   requires std::is_trivially_copyable_v<T>
@@ -53,8 +86,6 @@ template <class T, class Buffer>
 concept Serializable = requires(Buffer &buffer, const T &val) {
   { T::Serialize(buffer, val) } -> std::same_as<void>;
 };
-
-namespace fs = std::filesystem;
 
 class OutputFileStream {
 public:
@@ -108,4 +139,4 @@ private:
   fs::path m_FilePath;
   std::ofstream m_Stream;
 };
-} // namespace ob
+} // namespace Hermes::core::io

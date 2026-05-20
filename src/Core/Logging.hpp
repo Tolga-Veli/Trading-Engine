@@ -7,7 +7,7 @@
 #include <iostream>
 #include <string_view>
 
-namespace ob::core {
+namespace Hermes::core {
 
 enum class LogLevel : uint16_t { Trace = 0, Info, Warning, Error, Fatal, None };
 
@@ -58,33 +58,35 @@ static inline consteval std::string_view strip_path(std::string_view path) {
                                                 : path.substr(last_slash + 1);
 }
 
-} // namespace ob::core
+} // namespace Hermes::core
 
 #define HERMES_DEBUG 1
 
 #ifdef HERMES_DEBUG
 #define HERMES_INFO(...)                                                       \
-  ::ob::core::Logger::Log(::ob::core::LogLevel::Info, "INFO",                  \
-                          ::ob::core::Logger::HERMES_COL_GREEN, __VA_ARGS__)
+  ::Hermes::core::Logger::Log(::Hermes::core::LogLevel::Info, "INFO",          \
+                              ::Hermes::core::Logger::HERMES_COL_GREEN,        \
+                              __VA_ARGS__)
 #define HERMES_WARN(...)                                                       \
-  ::ob::core::Logger::Log(::ob::core::LogLevel::Warning, "WARN",               \
-                          ::ob::core::Logger::HERMES_COL_YELLOW, __VA_ARGS__)
+  ::Hermes::core::Logger::Log(::Hermes::core::LogLevel::Warning, "WARN",       \
+                              ::Hermes::core::Logger::HERMES_COL_YELLOW,       \
+                              __VA_ARGS__)
 #else
 #define HERMES_INFO(...)
 #define HERMES_WARN(...)
 #endif
 
 #define HERMES_ERROR(...)                                                      \
-  ::ob::core::Logger::LogFileAndLine(::ob::core::LogLevel::Error, "ERROR",     \
-                                     ::ob::core::Logger::HERMES_COL_RED,       \
-                                     ::ob::core::strip_path(__FILE__),         \
-                                     __LINE__, __VA_ARGS__)
+  ::Hermes::core::Logger::LogFileAndLine(                                      \
+      ::Hermes::core::LogLevel::Error, "ERROR",                                \
+      ::Hermes::core::Logger::HERMES_COL_RED,                                  \
+      ::Hermes::core::strip_path(__FILE__), __LINE__, __VA_ARGS__)
 
 #define HERMES_FATAL(...)                                                      \
   do {                                                                         \
-    ::ob::core::Logger::LogFileAndLine(::ob::core::LogLevel::Fatal, "FATAL",   \
-                                       ::ob::core::Logger::HERMES_COL_FATAL,   \
-                                       ::ob::core::strip_path(__FILE__),       \
-                                       __LINE__, __VA_ARGS__);                 \
+    ::Hermes::core::Logger::LogFileAndLine(                                    \
+        ::Hermes::core::LogLevel::Fatal, "FATAL",                              \
+        ::Hermes::core::Logger::HERMES_COL_FATAL,                              \
+        ::Hermes::core::strip_path(__FILE__), __LINE__, __VA_ARGS__);          \
     std::abort();                                                              \
   } while (0)

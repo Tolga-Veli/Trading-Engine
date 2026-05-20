@@ -3,7 +3,7 @@
 #include "Logging.hpp"
 #include "globals.hpp"
 
-namespace ob {
+namespace Hermes::core {
 
 class alignas(8) Trade {
 public:
@@ -59,4 +59,4 @@ private:
 static_assert(sizeof(Trade) == 56, "Trade size unecpected");
 static_assert(std::is_trivially_copyable_v<Trade>);
 
-} // namespace ob
+} // namespace Hermes::core

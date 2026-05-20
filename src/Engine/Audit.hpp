@@ -9,7 +9,7 @@
 #include "Core/OrderBookSnapshot.hpp"
 #include "Data-Structures/ThreadSafeQueue.hpp"
 
-namespace ob::engine {
+namespace Hermes::engine {
 
 template <class... Ts> struct Overloaded : Ts... {
   using Ts::operator()...;
@@ -19,8 +19,9 @@ template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 
 class AuditData {
 public:
-  using AuditDataVariant = std::variant<std::monostate, CommandPayload,
-                                        AuditBookSnapshot, EventPayload, Trade>;
+  using AuditDataVariant =
+      std::variant<std::monostate, CommandPayload, AuditBookSnapshot,
+                   EventPayload, core::Trade>;
 
   AuditData() = default;
 
@@ -76,18 +77,19 @@ public:
 
     AuditData data;
     while (!stoken.stop_requested() && m_Queue.wait_and_pop(data)) {
-      data.Decompose(
-          [](std::monostate) {},
-          [this](const CommandPayload &cmd) {
-            m_CommandsLog.WriteToBuffer(cmd);
-          },
-          [this](const AuditBookSnapshot &snapshot) {
-            m_SnapshotsLog.WriteToBuffer(snapshot);
-          },
-          [this](const EventPayload &event) {
-            m_EventsLog.WriteToBuffer(event);
-          },
-          [this](const Trade &trade) { m_TradesLog.WriteToBuffer(trade); });
+      data.Decompose([](std::monostate) {},
+                     [this](const CommandPayload &cmd) {
+                       m_CommandsLog.WriteToBuffer(cmd);
+                     },
+                     [this](const AuditBookSnapshot &snapshot) {
+                       m_SnapshotsLog.WriteToBuffer(snapshot);
+                     },
+                     [this](const EventPayload &event) {
+                       m_EventsLog.WriteToBuffer(event);
+                     },
+                     [this](const core::Trade &trade) {
+                       m_TradesLog.WriteToBuffer(trade);
+                     });
 
       auto now = std::chrono::steady_clock::now();
       if (now - last_flush >= flush_interval) {
@@ -100,10 +102,11 @@ public:
   }
 
 private:
-  const fs::path m_LoggingFolder{"Logging"};
-  OutputFileStream m_SnapshotsLog, m_CommandsLog, m_EventsLog, m_TradesLog;
+  const std::filesystem::path m_LoggingFolder{"Logging"};
+  core::io::OutputFileStream m_SnapshotsLog, m_CommandsLog, m_EventsLog,
+      m_TradesLog;
 
   data::ThreadSafeQueue<AuditData> m_Queue;
   std::jthread m_Thread;
 };
-} // namespace ob::engine
+} // namespace Hermes::engine

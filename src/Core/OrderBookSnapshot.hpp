@@ -6,7 +6,7 @@
 
 #include <vector>
 
-namespace ob::engine {
+namespace Hermes::engine {
 struct alignas(8) SnapshotLevel {
   Price price;       // 8 bytes
   Quantity quantity; // 8 bytes
@@ -17,13 +17,13 @@ static_assert(std::is_trivially_copyable_v<SnapshotLevel>);
 
 struct OrderBookSnapshot {
   std::vector<SnapshotLevel> bids, asks;
-  std::vector<Trade> trades;
+  std::vector<core::Trade> trades;
 };
 
 struct AuditLevel {
   Price price;
   Quantity quantity;
-  std::vector<Order> orders;
+  std::vector<core::Order> orders;
 };
 
 struct AuditBookSnapshot {
@@ -34,4 +34,4 @@ struct AuditBookSnapshot {
 
   std::vector<AuditLevel> bids, asks;
 };
-} // namespace ob::engine
+} // namespace Hermes::engine

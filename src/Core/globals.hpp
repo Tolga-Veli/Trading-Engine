@@ -2,15 +2,13 @@
 
 #include <chrono>
 #include <cstdint>
-#include <filesystem>
-#include <fstream>
 #include <iomanip>
 #include <sstream>
 #include <string>
 #include <string_view>
 
-namespace ob {
-using i32 = std::int16_t;
+namespace Hermes::core {
+using i32 = std::int32_t;
 using i64 = std::int64_t;
 
 using u8 = std::uint8_t;
@@ -105,7 +103,6 @@ inline bool HasFlag(Flags value, Flags flag) {
   return (static_cast<u16>(value) & static_cast<u16>(flag)) != 0;
 }
 
-namespace core {
 inline std::string format_price(Price price) {
   std::stringstream ss;
   ss << std::fixed << std::setprecision(2)
@@ -113,7 +110,7 @@ inline std::string format_price(Price price) {
   return ss.str();
 }
 
-inline std::string format_quantity(ob::Quantity value) {
+inline std::string format_quantity(Quantity value) {
   std::stringstream ss;
   ss << value;
   return ss.str();
@@ -197,36 +194,28 @@ inline constexpr std::string_view to_string(MatchType matchType) {
 inline static TimeNs GetCurrentTime() {
   return std::chrono::steady_clock::now().time_since_epoch().count();
 }
+} // namespace Hermes::core
 
-inline std::string ReadFromFile(const std::filesystem::path &path) {
-  std::ifstream in(path, std::ios::in | std::ios::binary | std::ios::ate);
+namespace Hermes {
+using i32 = core::i32;
+using i64 = core::i64;
 
-  if (!in)
-    return "";
+using u8 = core::u8;
+using u16 = core::u16;
+using u32 = core::u32;
+using u64 = core::u64;
 
-  auto size = in.tellg();
-  if (size <= 0)
-    return "";
+using core::ClientID;
+using core::OrderID;
+using core::Price;
+using core::Quantity;
+using core::TradeID;
 
-  std::string result;
-  result.resize(size);
+using core::Flags;
+using core::MatchType;
+using core::OrderType;
+using core::Side;
+using core::TimeInForce;
+using core::TimeNs;
 
-  in.seekg(0, std::ios::beg);
-  if (!in.read(result.data(), size))
-    return "";
-
-  return result;
-}
-
-inline bool WriteToFile(const std::vector<std::byte> &buffer,
-                        const std::filesystem::path &path) {
-  std::ofstream out(path, std::ios::binary);
-
-  if (!out)
-    return false;
-
-  out.write(reinterpret_cast<const char *>(buffer.data()), buffer.size());
-  return out.good();
-}
-} // namespace core
-} // namespace ob
+} // namespace Hermes

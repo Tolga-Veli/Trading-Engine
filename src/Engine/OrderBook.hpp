@@ -12,7 +12,7 @@
 #include <memory_resource>
 #include <unordered_map>
 
-namespace ob::engine {
+namespace Hermes::engine {
 inline constexpr u32 MaxEventsPerCommand = 128;
 inline static thread_local std::array<EventPayload, MaxEventsPerCommand>
     t_EventScratch;
@@ -21,7 +21,7 @@ inline static thread_local std::array<EventPayload, MaxEventsPerCommand>
 // fetch on every best-bid/ask comparison
 struct alignas(64) LevelData {
   Quantity volume{0};
-  std::pmr::list<Order> orders;
+  std::pmr::list<core::Order> orders;
 
   LevelData() = delete;
   ~LevelData() = default;
@@ -30,7 +30,7 @@ struct alignas(64) LevelData {
 };
 
 struct alignas(8) OrderEntry {
-  std::pmr::list<Order>::iterator list_it;
+  std::pmr::list<core::Order>::iterator list_it;
   std::pmr::map<Price, LevelData>::iterator level_it;
 };
 
@@ -43,7 +43,7 @@ enum class MarketState : u8 {
 
 template <class MatchingStrategy> class OrderBook {
   static_assert(
-      requires(MatchingStrategy s, Order &order, OrderBook &book) {
+      requires(MatchingStrategy s, core::Order &order, OrderBook &book) {
         s.Match(order, book);
       }, "MatchingStrategy::Match must exist and accept an Order& and an"
          "OrderBook<S>&");
@@ -65,7 +65,8 @@ public:
   OrderBook(OrderBook &&) = delete;
   OrderBook &operator=(OrderBook &&) = delete;
 
-  [[nodiscard]] const Order *FindOrder(const OrderID &orderID) const noexcept;
+  [[nodiscard]] const core::Order *
+  FindOrder(const OrderID &orderID) const noexcept;
 
   Quantity GetBidVolumeAtPrice(Price price) const noexcept;
   Quantity GetAskVolumeAtPrice(Price price) const noexcept;
@@ -75,8 +76,8 @@ public:
   }
 
   // Returns nullptr when the side is empty - callers must check
-  [[nodiscard]] Order *GetBestBid() noexcept;
-  [[nodiscard]] Order *GetBestAsk() noexcept;
+  [[nodiscard]] core::Order *GetBestBid() noexcept;
+  [[nodiscard]] core::Order *GetBestAsk() noexcept;
 
   [[nodiscard]] OrderBookSnapshot GetSnapshot(u32 depth) const noexcept;
 
@@ -143,6 +144,6 @@ private:
 
   friend class matching::PriceTimePriority;
 };
-} // namespace ob::engine
+} // namespace Hermes::engine
 
 #include "OrderBook.inl"

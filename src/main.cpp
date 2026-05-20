@@ -2,7 +2,7 @@
 #include "Engine/TradingEngine.hpp"
 #include "Renderer/Renderer.hpp"
 
-constexpr ob::u32 fast_rand(ob::u32 i, ob::u32 seed) {
+constexpr Hermes::u32 fast_rand(Hermes::u32 i, Hermes::u32 seed) {
   i ^= seed;
   i *= 747796405u;
   i ^= (i >> 16);
@@ -12,7 +12,7 @@ constexpr ob::u32 fast_rand(ob::u32 i, ob::u32 seed) {
 }
 
 int main() {
-  using namespace ob;
+  using namespace Hermes;
 
   constexpr std::chrono::microseconds EngineTickRate{100};
   constexpr std::chrono::milliseconds FrameTime{50};

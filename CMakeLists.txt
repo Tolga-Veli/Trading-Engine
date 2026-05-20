@@ -38,7 +38,7 @@ endforeach()
 
 list(REMOVE_DUPLICATES ALL_INCLUDE_DIRS)
 
-add_subdirectory("${LIB_DIR}/ftxui")
+add_subdirectory("${LIB_DIR}/FTXUI")
 
 add_executable(Orderbook ${SOURCES} ${HEADERS})
 

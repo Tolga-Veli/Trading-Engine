@@ -3,7 +3,7 @@
 
 #include <algorithm>
 
-namespace ob::render {
+namespace Hermes::render {
 
 Renderer::Renderer() {
   // Hide cursor for the lifetime of the renderer (restored in destructor)
@@ -12,7 +12,7 @@ Renderer::Renderer() {
 
 Renderer::~Renderer() { std::cout << "\x1b[?25h" << std::flush; }
 
-void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
+void Renderer::Render(const engine::OrderBookSnapshot &snapshot) {
   using namespace ftxui;
 
   Quantity max_vol = 0;
@@ -78,4 +78,4 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
   std::cout << std::flush;
 }
 
-} // namespace ob::render
+} // namespace Hermes::render

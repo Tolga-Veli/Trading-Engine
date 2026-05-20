@@ -9,7 +9,7 @@
 #include "Core/Trade.hpp"
 #include "Core/globals.hpp"
 
-namespace ob::engine {
+namespace Hermes::engine {
 
 template <class MatchingStrategy>
 ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
@@ -65,8 +65,8 @@ ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
   }
 
   const OrderID new_id = m_OrderCounter++;
-  Order order{new_id,     clientID, price,      quantity, side,
-              order_type, tif,      match_type, flags};
+  core::Order order{new_id,     clientID, price,      quantity, side,
+                    order_type, tif,      match_type, flags};
 
   m_MatchingStrategy.Match(order, *this);
 
@@ -198,7 +198,7 @@ OrderBook<MatchingStrategy>::InternalCancelOrder(ClientID clientID,
 }
 
 template <class MatchingStrategy>
-const Order *
+const core::Order *
 OrderBook<MatchingStrategy>::FindOrder(const OrderID &orderID) const noexcept {
   const auto it = m_Orders.find(orderID);
   if (it == m_Orders.end()) [[unlikely]]
@@ -208,7 +208,7 @@ OrderBook<MatchingStrategy>::FindOrder(const OrderID &orderID) const noexcept {
 }
 
 template <class MatchingStrategy>
-Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
+core::Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
   if (m_Bids.empty()) [[unlikely]]
     return nullptr;
   else
@@ -216,7 +216,7 @@ Order *OrderBook<MatchingStrategy>::GetBestBid() noexcept {
 }
 
 template <class MatchingStrategy>
-Order *OrderBook<MatchingStrategy>::GetBestAsk() noexcept {
+core::Order *OrderBook<MatchingStrategy>::GetBestAsk() noexcept {
   if (m_Asks.empty()) [[unlikely]]
     return nullptr;
   else
@@ -291,8 +291,8 @@ void OrderBook<MatchingStrategy>::RecordFill(OrderID makerOrderID,
 
   if (m_ScratchCounter < MaxEventsPerCommand) [[likely]] {
     t_EventScratch[m_ScratchCounter++] = EventPayload::MakeTrade(
-        Trade{m_TradeCounter++, makerOrderID, takerOrderID, price, quantity,
-              takerSide, match_type});
+        core::Trade{m_TradeCounter++, makerOrderID, takerOrderID, price,
+                    quantity, takerSide, match_type});
   }
 }
 
@@ -335,4 +335,4 @@ void OrderBook<T>::Handle(const Commands::Cancel &cmd) noexcept {
     t_EventScratch[m_ScratchCounter++] =
         EventPayload::MakeCancelRejected(cmd.clientID, cmd.orderID, code);
 }
-} // namespace ob::engine
+} // namespace Hermes::engine

@@ -7,7 +7,7 @@
 #include <memory>
 #include <thread>
 
-namespace ob::engine {
+namespace Hermes::engine {
 template <class MatchingStrategy, u64 TickRateNs, u64 CommandCapacity,
           u64 EventCapacity>
 class alignas(64) TradingEngine {
@@ -135,4 +135,4 @@ template <class MatchingStrategy, u64 TickRateNs = 100'000,
                                EventCapacity>;
   return std::make_unique<Engine>();
 }
-} // namespace ob::engine
+} // namespace Hermes::engine

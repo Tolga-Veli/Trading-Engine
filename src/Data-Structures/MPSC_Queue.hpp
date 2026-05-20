@@ -7,8 +7,8 @@
 #include <concepts>
 #include <new>
 
-namespace ob::data {
+namespace Hermes::data {
 template <class T, u32 Size>
   requires(Size > 0 && (Size & (Size - 1)) == 0)
 class MPSC_Queue {};
-} // namespace ob::data
+} // namespace Hermes::data

@@ -6,7 +6,7 @@
 #include <cstring>
 #include <type_traits>
 
-namespace ob::engine {
+namespace Hermes::engine {
 enum class CommandType : u8 { None = 0, Add = 1, Modify, Cancel };
 
 namespace Commands {
@@ -134,4 +134,4 @@ private:
 
 static_assert(sizeof(CommandPayload) == 40, "CommandPayload size unexpected");
 static_assert(std::is_trivially_copyable_v<CommandPayload>);
-} // namespace ob::engine
+} // namespace Hermes::engine
