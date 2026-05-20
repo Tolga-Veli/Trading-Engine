@@ -1,23 +1,30 @@
 #pragma once
 
+#include <thread>
+#include <variant>
+
 #include "Core/Commands.hpp"
 #include "Core/Events.hpp"
 #include "Core/FileStream.hpp"
 #include "Core/OrderBookSnapshot.hpp"
 #include "Data-Structures/ThreadSafeQueue.hpp"
 
-#include <thread>
-#include <variant>
-
 namespace ob::engine {
+
+template <class... Ts> struct Overloaded : Ts... {
+  using Ts::operator()...;
+};
+
+template <class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
 
 class AuditData {
 public:
-  using AuditDataVariant =
-      std::variant<std::monostate, Command, AuditBookSnapshot, Event, Trade>;
+  using AuditDataVariant = std::variant<std::monostate, CommandPayload,
+                                        AuditBookSnapshot, EventPayload, Trade>;
 
   AuditData() = default;
-  AuditData(const AuditDataVariant &v) : m_Variant(v) {}
+
+  template <class T> AuditData(T &&arg) : m_Variant(std::forward<T>(arg)) {}
 
   template <typename... Funcs> void Decompose(Funcs &&...f) const {
     std::visit(Overloaded{std::forward<Funcs>(f)...}, m_Variant);
@@ -41,7 +48,7 @@ public:
     if (m_Thread.joinable()) [[unlikely]]
       return;
 
-    m_Thread = std::jthread([this](std::stop_token stoken) { Run(stoken); });
+    m_Thread = std::jthread(&Audit::Run, this);
   }
 
   void Stop() {
@@ -64,25 +71,32 @@ public:
   }
 
   void Run(std::stop_token stoken) {
-    static constexpr std::chrono::milliseconds TickRate =
-        std::chrono::milliseconds{1000};
+    auto last_flush = std::chrono::steady_clock::now();
+    const auto flush_interval = std::chrono::milliseconds{TickRateMs};
 
     AuditData data;
     while (!stoken.stop_requested() && m_Queue.wait_and_pop(data)) {
       data.Decompose(
           [](std::monostate) {},
-          [this](const Command &cmd) { m_CommandsLog.WriteToBuffer(cmd); },
+          [this](const CommandPayload &cmd) {
+            m_CommandsLog.WriteToBuffer(cmd);
+          },
           [this](const AuditBookSnapshot &snapshot) {
             m_SnapshotsLog.WriteToBuffer(snapshot);
           },
-          [this](const Event &event) { m_EventsLog.WriteToBuffer(event); },
-          [this](const Trade &trade) { m_TradesLog.WriteToBuffer(trade); },
-          [](const auto &other) {});
+          [this](const EventPayload &event) {
+            m_EventsLog.WriteToBuffer(event);
+          },
+          [this](const Trade &trade) { m_TradesLog.WriteToBuffer(trade); });
 
-      const auto now = std::chrono::steady_clock::now();
-
-      std::this_thread::sleep_until(now + TickRate);
+      auto now = std::chrono::steady_clock::now();
+      if (now - last_flush >= flush_interval) {
+        FlushAll();
+        last_flush = now;
+      }
     }
+
+    FlushAll();
   }
 
 private:

@@ -3,11 +3,11 @@
 #include "Trade.hpp"
 #include "globals.hpp"
 
-#include <variant>
+#include <cstring>
 
 namespace ob::engine {
 
-enum class EventType {
+enum class EventType : u8 {
   None = 0,
   OrderAccepted,
   OrderRejected,
@@ -18,7 +18,7 @@ enum class EventType {
   Trade,
 };
 
-enum class ErrorCode {
+enum class ErrorCode : u8 {
   None = 0,
   Success,
   InvalidRequest,
@@ -32,84 +32,172 @@ enum class ErrorCode {
   Unauthorized
 };
 
-namespace EventTypes {
-struct OrderAccepted {
-  ClientID clientID;
-  OrderID orderID;
+namespace Events {
+
+struct alignas(8) OrderAccepted {
+  ClientID clientID; // 8 bytes
+  OrderID orderID;   // 8 bytes
 };
 
-struct OrderRejected {
-  ClientID clientID;
-  ErrorCode errorCode;
+static_assert(sizeof(OrderAccepted) == 16,
+              "Events::OrderAccepted unexpected size");
+static_assert(std::is_trivially_copyable_v<OrderAccepted>);
+
+struct alignas(8) OrderRejected {
+  ClientID clientID;   // 8 bytes
+  ErrorCode errorCode; // 1 byte
+  uint8_t pad[7]{};    // 7 bytes explicit padding
 };
 
-struct ModifyAccepted {
-  ClientID clientID;
-  OrderID old_orderID;
-  OrderID new_orderID;
+static_assert(sizeof(OrderRejected) == 16,
+              "Events::OrderRejected unexpected size");
+static_assert(std::is_trivially_copyable_v<OrderRejected>);
+
+struct alignas(8) ModifyAccepted {
+  ClientID clientID;   // 8 bytes
+  OrderID old_orderID; // 8 bytes
+  OrderID new_orderID; // 8 bytes
 };
 
-struct ModifyRejected {
-  ClientID clientID;
-  OrderID orderID;
-  ErrorCode errorCode;
+static_assert(sizeof(ModifyAccepted) == 24,
+              "Events::ModifyAccepted unexpected size");
+static_assert(std::is_trivially_copyable_v<ModifyAccepted>);
+
+struct alignas(8) ModifyRejected {
+  ClientID clientID;   // 8 bytes
+  OrderID orderID;     // 8 bytes
+  ErrorCode errorCode; // 1 byte
+  uint8_t pad[7]{};    // 7 bytes explicit padding
 };
 
-struct CancelAccepted {
-  ClientID clientID;
-  OrderID orderID;
+static_assert(sizeof(ModifyRejected) == 24,
+              "Events::ModifyRejected unexpected size");
+static_assert(std::is_trivially_copyable_v<ModifyRejected>);
+
+struct alignas(8) CancelAccepted {
+  ClientID clientID; // 8 bytes
+  OrderID orderID;   // 8 bytes
 };
 
-struct CancelRejected {
-  ClientID clientID;
-  OrderID orderID;
-  ErrorCode errorCode;
-};
-} // namespace EventTypes
+static_assert(sizeof(CancelAccepted) == 16,
+              "Events::CancelAccepted unexpected size");
+static_assert(std::is_trivially_copyable_v<CancelAccepted>);
 
-class Event {
+struct alignas(8) CancelRejected {
+  ClientID clientID;   // 8 bytes
+  OrderID orderID;     // 8 bytes
+  ErrorCode errorCode; // 1 byte
+  uint8_t pad[7]{};    // 7 bytes explicit padding
+};
+
+static_assert(sizeof(CancelRejected) == 24,
+              "Events::CancelRejected unexpected size");
+static_assert(std::is_trivially_copyable_v<CancelRejected>);
+} // namespace Events
+
+/*
+ * Event - tagged union
+ * Invariant: m_EventType always reflects which union is active
+ * Enforcement: Construction only through make factories
+ *
+ *
+ */
+class alignas(8) EventPayload {
 public:
-  using EventVariant =
-      std::variant<std::monostate, EventTypes::OrderAccepted,
-                   EventTypes::OrderRejected, EventTypes::ModifyAccepted,
-                   EventTypes::ModifyRejected, EventTypes::CancelAccepted,
-                   EventTypes::CancelRejected, Trade>;
+  EventPayload() : m_EventType(EventType::None), m_Data{} {}
 
-  Event() = default;
-  Event(const EventVariant &v) : m_Variant(v) {}
-
-  constexpr EventType GetType() const {
-    return std::visit(
-        [](auto &&arg) -> EventType {
-          using T = std::decay_t<decltype(arg)>;
-          if constexpr (std::is_same_v<T, std::monostate>)
-            return EventType::None;
-          else if constexpr (std::is_same_v<T, EventTypes::OrderAccepted>)
-            return EventType::OrderAccepted;
-          else if constexpr (std::is_same_v<T, EventTypes::OrderRejected>)
-            return EventType::OrderRejected;
-          else if constexpr (std::is_same_v<T, EventTypes::ModifyAccepted>)
-            return EventType::ModifyAccepted;
-          else if constexpr (std::is_same_v<T, EventTypes::ModifyRejected>)
-            return EventType::ModifyRejected;
-          else if constexpr (std::is_same_v<T, EventTypes::CancelAccepted>)
-            return EventType::CancelAccepted;
-          else if constexpr (std::is_same_v<T, EventTypes::CancelRejected>)
-            return EventType::CancelRejected;
-          else if constexpr (std::is_same_v<T, Trade>)
-            return EventType::Trade;
-        },
-        m_Variant);
+  [[nodiscard]] static EventPayload
+  MakeOrderAccepted(ClientID clientID, OrderID orderID) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::OrderAccepted;
+    event.m_Data.order_acc = {clientID, orderID};
+    return event;
   }
 
-  template <typename... Fs> auto Decompose(Fs &&...fs) const {
-    return std::visit(Overloaded{std::forward<Fs>(fs)...}, m_Variant);
+  [[nodiscard]] static EventPayload
+  MakeOrderRejected(ClientID clientID, ErrorCode error_code) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::OrderRejected;
+    event.m_Data.order_rej = {clientID, error_code};
+    return event;
   }
 
-  static void Serialize(std::vector<std::byte> &buffer, const Event &cmd) {}
+  [[nodiscard]] static EventPayload
+  MakeModifyAccepted(ClientID cid, OrderID old_oid, OrderID new_oid) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::ModifyAccepted;
+    event.m_Data.mod_acc = {cid, old_oid, new_oid};
+    return event;
+  }
+
+  [[nodiscard]] static EventPayload
+  MakeModifyRejected(ClientID cid, OrderID oid, ErrorCode ec) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::ModifyRejected;
+    event.m_Data.mod_rej = {cid, oid, ec};
+    return event;
+  }
+
+  [[nodiscard]] static EventPayload MakeCancelAccepted(ClientID cid,
+                                                       OrderID oid) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::CancelAccepted;
+    event.m_Data.cancel_acc = {cid, oid};
+    return event;
+  }
+
+  [[nodiscard]] static EventPayload
+  MakeCancelRejected(ClientID cid, OrderID oid, ErrorCode ec) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::CancelRejected;
+    event.m_Data.cancel_rej = {cid, oid, ec};
+    return event;
+  }
+
+  [[nodiscard]] static EventPayload MakeTrade(Trade t) noexcept {
+    EventPayload event;
+    event.m_EventType = EventType::Trade;
+    event.m_Data.trade = t;
+    return event;
+  }
+
+  [[nodiscard]] EventType GetType() const noexcept { return m_EventType; }
+
+  [[nodiscard]] bool IsNone() const noexcept {
+    return m_EventType == EventType::None;
+  }
+
+  static void Serialize(std::byte *buffer, const EventPayload &event) noexcept {
+    std::memcpy(buffer, &event, sizeof(EventPayload));
+  }
+
+  static EventPayload Deserialize(const std::byte *src) noexcept {
+    EventPayload event;
+    std::memcpy(&event, src, sizeof(EventPayload));
+    return event;
+  }
 
 private:
-  EventVariant m_Variant;
+  // Takes the size of its biggest field, which is trade => 56 bytes
+  union {
+    Events::OrderAccepted order_acc;
+    Events::OrderRejected order_rej;
+    Events::ModifyAccepted mod_acc;
+    Events::ModifyRejected mod_rej;
+    Events::CancelAccepted cancel_acc;
+    Events::CancelRejected cancel_rej;
+    Trade trade;
+  } m_Data;
+
+  // 1 bytes
+  EventType m_EventType;
+
+  u8 m_Padding[7]{};
 };
+
+static_assert(sizeof(EventPayload) == 64, "EventPayload unexpected size");
+static_assert(
+    std::is_trivially_copyable_v<EventPayload>,
+    "EventPayload must be trivially copyable for fast serialization!");
 
 } // namespace ob::engine

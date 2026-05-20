@@ -11,7 +11,9 @@ public:
   void Close();
   bool IsConnected();
 
-  Response SendRequest(const Request &request);
+  void SendRequest(const Request &request);
+
+  bool TryGetResponse(Response &response);
 
 private:
 };

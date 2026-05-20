@@ -7,13 +7,16 @@
 #include <vector>
 
 namespace ob::engine {
-struct SnapshotLevel {
-  Price price;
-  Quantity quantity;
+struct alignas(8) SnapshotLevel {
+  Price price;       // 8 bytes
+  Quantity quantity; // 8 bytes
 };
 
+static_assert(sizeof(SnapshotLevel) == 16, "SnapshotLevel unexpected size");
+static_assert(std::is_trivially_copyable_v<SnapshotLevel>);
+
 struct OrderBookSnapshot {
-  std::vector<std::pair<Price, Quantity>> bids, asks;
+  std::vector<SnapshotLevel> bids, asks;
   std::vector<Trade> trades;
 };
 
@@ -24,6 +27,8 @@ struct AuditLevel {
 };
 
 struct AuditBookSnapshot {
+  AuditBookSnapshot() = default;
+
   static void Serialize(std::vector<std::byte> &buffer,
                         const AuditBookSnapshot &snapshot) {}
 

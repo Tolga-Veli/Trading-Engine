@@ -5,7 +5,6 @@
 #include "OrderBook.hpp"
 
 #include <memory>
-#include <mutex>
 #include <thread>
 
 namespace ob::engine {
@@ -15,14 +14,18 @@ class alignas(64) TradingEngine {
 public:
   using Book = OrderBook<MatchingStrategy>;
 
-  explicit TradingEngine() noexcept = default;
+  explicit TradingEngine() noexcept {
+    m_Snapshots[0] = std::make_shared<OrderBookSnapshot>();
+    m_Snapshots[1] = std::make_shared<OrderBookSnapshot>();
+    m_ActiveSnapshot.store(m_Snapshots[0].get(), std::memory_order_relaxed);
+  }
 
   TradingEngine(const TradingEngine &) = delete;
   TradingEngine &operator=(const TradingEngine &) = delete;
   TradingEngine(TradingEngine &&) = delete;
   TradingEngine &operator=(TradingEngine &&) = delete;
 
-  ~TradingEngine() = default;
+  ~TradingEngine() { Stop(); }
 
   void Start() {
     m_Thread = std::jthread([this](std::stop_token st) { Run(st); });
@@ -33,74 +36,94 @@ public:
   void AddOrder(ClientID clientID, Price price, Quantity quantity, Side side,
                 OrderType order_type, TimeInForce tif, MatchType match_type,
                 Flags flags) {
-    m_CommandQueue.push(CommandTypes::AddOrder{
-        clientID, price, quantity, side, order_type, tif, match_type, flags});
+    m_CommandQueue.push(CommandPayload::MakeAdd(
+        clientID, price, quantity, side, order_type, tif, match_type, flags));
   }
 
   void ModifyOrder(ClientID clientID, OrderID orderID, Price new_price,
                    Quantity new_quantity) {
     m_CommandQueue.push(
-        CommandTypes::ModifyOrder{clientID, orderID, new_price, new_quantity});
+        CommandPayload::MakeModify(clientID, orderID, new_price, new_quantity));
   }
 
   void CancelOrder(ClientID clientID, OrderID orderID) {
-    m_CommandQueue.push(CommandTypes::CancelOrder{clientID, orderID});
+    m_CommandQueue.push(CommandPayload::MakeCancel(clientID, orderID));
   }
 
-  // TODO: many clients read snapshot, one thread should update snapshot
   OrderBookSnapshot GetSnapshot() {
-    std::lock_guard<std::mutex> lock(m_SnapshotMutex);
-    return m_LatestSnapshot;
+    auto *active = m_ActiveSnapshot.load(std::memory_order_acquire);
+    return *active;
   }
 
   void UpdateSnapshot(u32 depth) {
-    std::lock_guard<std::mutex> lock(m_SnapshotMutex);
-    auto snapshot = m_Orderbook.GetSnapshot(depth);
-    m_LatestSnapshot = std::move(snapshot);
+    auto *curr = m_ActiveSnapshot.load(std::memory_order_relaxed);
+    i32 inactive_idx = (curr == m_Snapshots[0].get()) ? 1 : 0;
+
+    *m_Snapshots[inactive_idx] = m_Orderbook.GetSnapshot(depth);
+    m_ActiveSnapshot.store(m_Snapshots[inactive_idx].get(),
+                           std::memory_order_release);
   }
 
   [[nodiscard]]
-  bool TryGetEvent(Event &out) noexcept {
+  bool TryGetEvent(EventPayload &out) noexcept {
     return m_EventQueue.try_pop(out);
   }
 
-  void HandleEvent(const ob::engine::Event &event) {
-    using namespace ob::engine::EventTypes;
-    event.Decompose(
-        [](std::monostate) {}, [](const OrderAccepted &event) {},
-        [](const OrderRejected &event) {}, [](const ModifyAccepted &event) {},
-        [](const ModifyRejected &event) {}, [](const CancelAccepted &event) {},
-        [](const CancelRejected &event) {}, [](const auto &other_events) {});
+  void HandleEvent(const EventPayload &event) {
+    // TODO:
+    using enum EventType;
+    switch (event.GetType()) {
+    case OrderAccepted:
+    case OrderRejected:
+    case ModifyAccepted:
+    case ModifyRejected:
+    case CancelAccepted:
+    case CancelRejected:
+      break;
+    default:
+      break;
+    }
   }
 
 private:
   Book m_Orderbook{};
-  data::ThreadSafeQueue<Command> m_CommandQueue; // TODO: replace with MPSC
-  data::SPSC_Queue<Event, EventCapacity> m_EventQueue;
 
-  OrderBookSnapshot m_LatestSnapshot{};
-  std::mutex m_SnapshotMutex{};
+  // TODO: replace with MPSC
+  data::ThreadSafeQueue<CommandPayload> m_CommandQueue;
+  data::SPSC_Queue<EventPayload, EventCapacity> m_EventQueue;
+
+  std::shared_ptr<OrderBookSnapshot> m_Snapshots[2];
+  std::atomic<OrderBookSnapshot *> m_ActiveSnapshot{nullptr};
 
   std::jthread m_Thread;
 
   void Run(std::stop_token st) {
+    static u64 orders_processed = 0;
     static constexpr auto TickRate = std::chrono::nanoseconds{TickRateNs};
 
-    Command cmd;
     while (!st.stop_requested()) [[likely]] {
-      const auto tick_start = std::chrono::steady_clock::now();
+      bool processed_any = false;
 
+      CommandPayload cmd;
       while (m_CommandQueue.try_pop(cmd)) [[likely]] {
+        orders_processed++;
+        processed_any = true;
         auto events = m_Orderbook.Apply(cmd);
+
         for (const auto &event : events)
           HandleEvent(event);
       }
 
-      std::this_thread::sleep_for(TickRate);
+      // TODO: this is bad
+      if (!processed_any)
+        std::this_thread::sleep_for(TickRate);
     }
 
+    CommandPayload cmd;
     while (m_CommandQueue.try_pop(cmd))
       auto events = m_Orderbook.Apply(cmd);
+
+    std::cout << "Orders processed: " << orders_processed << std::endl;
   }
 };
 

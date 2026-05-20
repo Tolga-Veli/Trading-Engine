@@ -4,8 +4,10 @@
 #include "globals.hpp"
 
 namespace ob {
-struct Trade {
-  Trade() = delete;
+
+class alignas(8) Trade {
+public:
+  Trade() = default;
   Trade(TradeID tradeID, OrderID makerOrderID, OrderID takerOrderID,
         Price price, Quantity quantity, Side takerSide, MatchType matchType)
       : m_TradeID(tradeID), m_MakerOrderID(makerOrderID),
@@ -26,7 +28,7 @@ struct Trade {
   Quantity GetQuantity() const noexcept { return m_Quantity; }
   Side GetTakerSide() const noexcept { return m_TakerSide; }
   MatchType GetMatchType() const noexcept { return m_MatchType; }
-  Time GetTimestamp() const noexcept { return m_Timestamp; }
+  TimeNs GetTimestamp() const noexcept { return m_Timestamp; }
 
   void log() const {
     HERMES_INFO("TradeID: {}, Maker OrderID: {}, Taker OrderID: {}, Price: {}, "
@@ -37,13 +39,24 @@ struct Trade {
   }
 
 private:
+  // 8-Byte Fields (48 Bytes)
   TradeID m_TradeID;
   OrderID m_MakerOrderID;
   OrderID m_TakerOrderID;
-  Price m_Price; // execution price — always the maker's resting price
+  Price m_Price;
   Quantity m_Quantity;
-  Side m_TakerSide; // which side was the aggressor
+  TimeNs m_Timestamp;
+
+  // 1-Byte Fields (2 Bytes)
+  Side m_TakerSide;
   MatchType m_MatchType;
-  Time m_Timestamp;
+
+  // Explicit Zero-Padding (6 Bytes)
+  // Pads out the remaining bytes so the total size is a multiple of 8
+  u8 m_Padding[6]{};
 };
+
+static_assert(sizeof(Trade) == 56, "Trade size unecpected");
+static_assert(std::is_trivially_copyable_v<Trade>);
+
 } // namespace ob

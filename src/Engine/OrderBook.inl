@@ -23,7 +23,7 @@ ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
     return ErrorCode::InvalidRequest;
   }
 
-  if (tif == TimeInForce::FillOrKill) [[unlikely]] {
+  if (tif == TimeInForce::FOK) [[unlikely]] {
     Quantity available = 0;
 
     if (side == Side::Buy) {
@@ -75,20 +75,19 @@ ErrorCode OrderBook<MatchingStrategy>::InternalAddOrder(
 
   bool shouldRestOnBook = false;
   switch (tif) {
-  case TimeInForce::ImmediateOrCancel:
-  case TimeInForce::FillOrKill:
-  case TimeInForce::FillAndKill:
+  case TimeInForce::IOC:
+  case TimeInForce::FOK:
     shouldRestOnBook = false;
     break;
-  case TimeInForce::DayOrder:
-  case TimeInForce::GoodTillCancelled:
+  case TimeInForce::Day:
+  case TimeInForce::GTC:
     if (order_type == OrderType::Market) [[unlikely]]
       return ErrorCode::InvalidOrderCombination;
 
     shouldRestOnBook = true;
     break;
-  case TimeInForce::GoodTillDate:
-  case TimeInForce::AtTheOpening:
+  case TimeInForce::GTD:
+  case TimeInForce::ATO:
     return ErrorCode::NotImplemented;
   default:
     return ErrorCode::UnsupportedTimeInForce;
@@ -291,48 +290,49 @@ void OrderBook<MatchingStrategy>::RecordFill(OrderID makerOrderID,
   }
 
   if (m_ScratchCounter < MaxEventsPerCommand) [[likely]] {
-    t_EventScratch[m_ScratchCounter++] =
-        Event{Trade{m_TradeCounter++, makerOrderID, takerOrderID, price,
-                    quantity, takerSide, match_type}};
+    t_EventScratch[m_ScratchCounter++] = EventPayload::MakeTrade(
+        Trade{m_TradeCounter++, makerOrderID, takerOrderID, price, quantity,
+              takerSide, match_type});
   }
 }
 
 template <class T>
-void OrderBook<T>::Handle(const CommandTypes::AddOrder &cmd) noexcept {
+void OrderBook<T>::Handle(const Commands::Add &cmd) noexcept {
   const auto code =
       InternalAddOrder(cmd.clientID, cmd.price, cmd.quantity, cmd.side,
                        cmd.order_type, cmd.tif, cmd.match_type, cmd.flags);
 
   if (code == ErrorCode::Success) [[likely]]
     t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::OrderAccepted{cmd.clientID, m_OrderCounter - 1}};
+        EventPayload::MakeOrderAccepted(cmd.clientID, m_OrderCounter - 1);
   else
     t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::OrderRejected{cmd.clientID, code}};
+        EventPayload::MakeOrderRejected(cmd.clientID, code);
 }
 
 template <class T>
-void OrderBook<T>::Handle(const CommandTypes::ModifyOrder &cmd) noexcept {
+void OrderBook<T>::Handle(const Commands::Modify &cmd) noexcept {
   const auto code = InternalModifyOrder(cmd.clientID, cmd.orderID,
                                         cmd.new_price, cmd.new_quantity);
 
+  // TODO: new and old orderID passed in make modify accepted
   if (code == ErrorCode::Success) [[likely]]
-    t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::ModifyAccepted{cmd.clientID, cmd.orderID}};
+    t_EventScratch[m_ScratchCounter++] = EventPayload::MakeModifyAccepted(
+        cmd.clientID, cmd.orderID, cmd.orderID);
   else
     t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::ModifyRejected{cmd.clientID, cmd.orderID}};
+        EventPayload::MakeModifyRejected(cmd.clientID, cmd.orderID, code);
 }
 
 template <class T>
-void OrderBook<T>::Handle(const CommandTypes::CancelOrder &cmd) noexcept {
+void OrderBook<T>::Handle(const Commands::Cancel &cmd) noexcept {
   const auto code = InternalCancelOrder(cmd.clientID, cmd.orderID);
 
   if (code == ErrorCode::Success) [[likely]]
     t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::CancelAccepted{cmd.clientID, cmd.orderID}};
+        EventPayload::MakeCancelAccepted(cmd.clientID, cmd.orderID);
   else
     t_EventScratch[m_ScratchCounter++] =
-        Event{EventTypes::CancelRejected{cmd.clientID, cmd.orderID, code}};
+        EventPayload::MakeCancelRejected(cmd.clientID, cmd.orderID, code);
 }
 } // namespace ob::engine

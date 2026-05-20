@@ -17,9 +17,9 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
 
   Quantity max_vol = 0;
   for (const auto &p : snapshot.bids)
-    max_vol = std::max(max_vol, p.second);
+    max_vol = std::max(max_vol, p.quantity);
   for (const auto &p : snapshot.asks)
-    max_vol = std::max(max_vol, p.second);
+    max_vol = std::max(max_vol, p.quantity);
 
   if (max_vol == 0)
     max_vol = 1;
@@ -43,13 +43,14 @@ void Renderer::Render(const ob::engine::OrderBookSnapshot &snapshot) {
 
   Elements bid_rows, ask_rows;
   for (const auto &bid : snapshot.bids)
-    bid_rows.emplace_back(make_row(bid.first, bid.second, Color::Green, true));
+    bid_rows.emplace_back(
+        make_row(bid.price, bid.quantity, Color::Green, true));
 
   for (const auto &ask : snapshot.asks)
-    ask_rows.emplace_back(make_row(ask.first, ask.second, Color::Red, false));
+    ask_rows.emplace_back(make_row(ask.price, ask.quantity, Color::Red, false));
 
-  Price best_bid = snapshot.bids.empty() ? 0 : snapshot.bids.front().first;
-  Price best_ask = snapshot.asks.empty() ? 0 : snapshot.asks.front().first;
+  Price best_bid = snapshot.bids.empty() ? 0 : snapshot.bids.front().price;
+  Price best_ask = snapshot.asks.empty() ? 0 : snapshot.asks.front().price;
   Price spread_val = best_ask - best_bid;
 
   auto spread_display =

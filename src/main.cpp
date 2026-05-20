@@ -2,15 +2,21 @@
 #include "Engine/TradingEngine.hpp"
 #include "Renderer/Renderer.hpp"
 
-#include <random>
+constexpr ob::u32 fast_rand(ob::u32 i, ob::u32 seed) {
+  i ^= seed;
+  i *= 747796405u;
+  i ^= (i >> 16);
+  i *= 2891336453u;
+  i ^= (i >> 16);
+  return i;
+}
 
 int main() {
   using namespace ob;
 
   constexpr std::chrono::microseconds EngineTickRate{100};
   constexpr std::chrono::milliseconds FrameTime{50};
-  std::mt19937 rng{1};
-  std::uniform_int_distribution<uint32_t> dist{1, 1000};
+  constexpr std::chrono::seconds RunningTime{3};
 
   std::chrono::time_point<std::chrono::steady_clock> LastRenderTime{
       std::chrono::steady_clock::now()};
@@ -21,14 +27,15 @@ int main() {
   TradingEngine->Start();
 
   auto start = std::chrono::steady_clock::now();
-  constexpr std::chrono::seconds RunningTime{5};
 
-  u32 count = 0;
-  bool m_Running{true};
+  u32 cnt = 0;
   render::Renderer Renderer;
-  while (m_Running) {
-    if (std::chrono::steady_clock::now() - start >= RunningTime)
+
+  while (true) {
+    if (std::chrono::steady_clock::now() - start >= RunningTime) {
+      std::cout << "Hit 3-second timeout!" << std::endl;
       break;
+    }
 
     if (const auto now = std::chrono::steady_clock::now();
         now - LastRenderTime > FrameTime) {
@@ -37,24 +44,20 @@ int main() {
       LastRenderTime = now;
     }
 
-    if (false) {
-      TradingEngine->Stop();
-      m_Running = false;
-    }
+    TradingEngine->AddOrder(ClientID{1}, Price{fast_rand(cnt, 3) % 1000 + 1},
+                            Quantity{fast_rand(cnt, 4) % 1000 + 1}, Side::Buy,
+                            OrderType::Limit, TimeInForce::GTC,
+                            MatchType::Standard, Flags::None);
 
-    TradingEngine->AddOrder(ClientID{1}, Price{dist(rng)}, Quantity{dist(rng)},
-                            Side::Buy, OrderType::Limit,
-                            TimeInForce::GoodTillCancelled, MatchType::Standard,
-                            Flags::None);
+    TradingEngine->AddOrder(
+        ClientID{2}, Price{fast_rand(cnt + 1, 5) % 1000 + 1},
+        Quantity{fast_rand(cnt + 1, 6) % 1000 + 1}, Side::Sell,
+        OrderType::Limit, TimeInForce::GTC, MatchType::Standard, Flags::None);
 
-    TradingEngine->AddOrder(ClientID{2}, Price{dist(rng)}, Quantity{dist(rng)},
-                            Side::Sell, OrderType::Limit,
-                            TimeInForce::GoodTillCancelled, MatchType::Standard,
-                            Flags::None);
-    count++;
+    cnt += 2;
   }
 
-  TradingEngine->Stop();
+  std::cout << "Sent orders: " << cnt << std::endl;
 
-  std::cout << "Total count of orders: " << count << std::endl;
+  TradingEngine->Stop();
 }

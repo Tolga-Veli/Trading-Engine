@@ -1,36 +1,24 @@
 #pragma once
 
-#include "Commands.hpp"
 #include "globals.hpp"
 
-#include <variant>
+#include "Commands.hpp"
+#include "Events.hpp"
 
 namespace ob::networking {
 using RequestID = std::uint64_t;
 
 struct Request {
   RequestID requestID;
-  engine::Command payload;
-};
-
-enum class ErrorCode : std::uint8_t {
-  None = 0,
-  InvalidRequest = 1,
-};
-
-struct Ok {
-  OrderID orderID;
-};
-
-struct Error {
-  ErrorCode errorCode;
-  std::string msg;
+  engine::CommandPayload payload;
 };
 
 struct Response {
   RequestID requestID;
-  std::variant<Ok, Error> payload;
-};
 
+  bool ok;
+  OrderID orderID;
+  engine::ErrorCode error;
+};
 }; // namespace ob::networking
 //

@@ -11,11 +11,11 @@
 #include <map>
 #include <memory_resource>
 #include <unordered_map>
-#include <variant>
 
 namespace ob::engine {
 inline constexpr u32 MaxEventsPerCommand = 128;
-inline thread_local std::array<Event, MaxEventsPerCommand> t_EventScratch;
+inline static thread_local std::array<EventPayload, MaxEventsPerCommand>
+    t_EventScratch;
 
 // use alignas(64) so LevelData is not a cache boundary and cause an additional
 // fetch on every best-bid/ask comparison
@@ -24,12 +24,12 @@ struct alignas(64) LevelData {
   std::pmr::list<Order> orders;
 
   LevelData() = delete;
-  explicit LevelData(std::pmr::memory_resource *mr) : orders(mr) {}
-
   ~LevelData() = default;
+
+  explicit LevelData(std::pmr::memory_resource *mr) : orders(mr) {}
 };
 
-struct OrderEntry {
+struct alignas(8) OrderEntry {
   std::pmr::list<Order>::iterator list_it;
   std::pmr::map<Price, LevelData>::iterator level_it;
 };
@@ -49,8 +49,8 @@ template <class MatchingStrategy> class OrderBook {
          "OrderBook<S>&");
 
 public:
-  // Pool default: 32 MiB
-  static constexpr u64 DefaultPoolSize = 32 * 1024 * 1024;
+  // Pool default: 128 MiB
+  static constexpr u64 DefaultPoolSize = 128 * 1024 * 1024;
 
   explicit OrderBook(u64 pool_size = DefaultPoolSize) noexcept
       : m_Buffer(pool_size), m_Pool(&m_Buffer), m_Bids(&m_Pool),
@@ -78,16 +78,32 @@ public:
   [[nodiscard]] Order *GetBestBid() noexcept;
   [[nodiscard]] Order *GetBestAsk() noexcept;
 
-  [[nodiscard]] OrderBookSnapshot GetSnapshot(uint32_t depth) const noexcept;
+  [[nodiscard]] OrderBookSnapshot GetSnapshot(u32 depth) const noexcept;
 
   // called by the MatchingStrategy on every partial or full match
   void RecordFill(OrderID makerOrderID, OrderID takerOrderID, Price price,
                   Quantity quantity, Side takerSide,
                   MatchType match_type) noexcept;
 
-  [[nodiscard]] std::span<const Event> Apply(const Command &cmd) noexcept {
+  [[nodiscard]] std::span<const EventPayload>
+  Apply(const CommandPayload &cmd) noexcept {
     m_ScratchCounter = 0;
-    cmd.Decompose([this](auto &&arg) noexcept { Handle(arg); });
+
+    using enum CommandType;
+    switch (cmd.GetType()) {
+    case Add:
+      Handle(cmd.AsAdd());
+      break;
+    case Modify:
+      Handle(cmd.AsModify());
+      break;
+    case Cancel:
+      Handle(cmd.AsCancel());
+      break;
+    default:
+      return {};
+    }
+
     return {t_EventScratch.data(), m_ScratchCounter};
   }
 
@@ -98,7 +114,9 @@ private:
   std::pmr::map<Price, LevelData, std::greater<Price>> m_Bids;
   std::pmr::map<Price, LevelData, std::less<Price>> m_Asks;
   std::pmr::unordered_map<OrderID, OrderEntry> m_Orders;
-  std::pmr::multimap<Time, OrderID> m_ExpiryWatchlist; // TODO: prune GTD orders
+
+  // TODO: prune GTD orders
+  std::pmr::multimap<TimeNs, OrderID> m_ExpiryWatchlist;
 
   MarketState m_MarketState{MarketState::Closed};
   MatchingStrategy m_MatchingStrategy{};
@@ -107,10 +125,9 @@ private:
   OrderID m_OrderCounter{1};
   TradeID m_TradeCounter{1};
 
-  void Handle(const std::monostate &) const noexcept {}
-  void Handle(const CommandTypes::AddOrder &cmd) noexcept;
-  void Handle(const CommandTypes::ModifyOrder &cmd) noexcept;
-  void Handle(const CommandTypes::CancelOrder &cmd) noexcept;
+  void Handle(const Commands::Add &cmd) noexcept;
+  void Handle(const Commands::Modify &cmd) noexcept;
+  void Handle(const Commands::Cancel &cmd) noexcept;
 
   [[nodiscard]] ErrorCode
   InternalAddOrder(ClientID clientID, Price price, Quantity quantity, Side side,

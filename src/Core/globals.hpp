@@ -20,43 +20,72 @@ using u64 = std::uint64_t;
 
 using ClientID = u64;
 using OrderID = u64;
-using TradeID = u64;
 using Price = i64; // in 1/10th of a cent therefore  1000 = 1$
-using Quantity = i64;
-using Time = std::chrono::nanoseconds;
+using Quantity = u64;
 
-template <typename... Fs> struct Overloaded : Fs... {
-  using Fs::operator()...;
+using TimeNs = i64;
+
+using AccountID = u64;
+using ClientOrderID = u64;
+using TradeID = u64;
+using MatchID = u64;
+
+enum class Side : u8 { Buy = 0, Sell = 1 };
+
+enum class OrderType : u8 {
+  Limit = 0,
+  Market = 1,
+  Complex = 2,
+  Stop,
+  StopLimit,
+  MarketIfTouched,
+  LimitIfTouched,
+  Pegged
 };
 
-template <typename... Fs> Overloaded(Fs...) -> Overloaded<Fs...>;
+enum class TimeInForce : u8 {
+  GTC = 0, // Good 'Till Cancelled - Supported
+  Day, // Day order - expires automatically at the end of the trading session
+       // Not supported
 
-enum class Side { Buy = 0, Sell };
+  IOC, // Immediate-Or-Cancel (fills what it can immediately, cancels rest) -
+       // Supported
 
-enum class OrderType { Limit = 0, Market, Stop, StopLimit };
+  FOK, // Fill-Or-Kill (fills entire quantity immediately, or cancels
+       // everything) -  Supported
 
-enum class TimeInForce {
-  GoodTillCancelled = 0, // Supported
-  DayOrder,              // Not supported
-  ImmediateOrCancel,     // Supported
-  FillOrKill,            // Supported
-  FillAndKill,           // Supported
-  GoodTillDate,          // Not supported
-  AtTheOpening,          // Not supported
+  GTD, // Good 'Till Date/Time (requires ExpiryTime field) - Not supported
+  ATO, // At the Opening (Auction only) -  Not supported
+  ATC, // At the Close (Auction only) - Not supported
 };
 
-enum class MatchType {
+enum class PegScope : u8 {
+  None = 0,
+  Primary = 1,
+  Market = 2,
+  Midpoint = 3,
+};
+
+enum class MatchType : u8 {
   Standard,
-  Midpoint,
-  HiddenLiquidity,
-  Auction,
+  Midpoint,        // Not supported
+  HiddenLiquidity, // Not supported
+  Auction,         // Not supported
 };
 
-enum class Flags : u8 {
+enum class ExecutionInstructions : u16 {
+  None = 0,
+  ParticipateDoNotInitiate = 1,
+  AllOrNone = 1 << 1,
+  ReduceOnly = 1 << 2,
+  IntermarketSwap = 1 << 3,
+};
+
+enum class Flags : u16 {
   None = 0,
   Hidden = 1,
   Iceberg = 1 << 1,
-  PostOnly = 1 << 2
+  PostOnly = 1 << 2,
 };
 
 inline Flags operator|(Flags a, Flags b) {
@@ -70,6 +99,10 @@ inline Flags operator&(Flags a, Flags b) {
 inline Flags &operator|=(Flags &a, Flags b) {
   a = a | b;
   return a;
+}
+
+inline bool HasFlag(Flags value, Flags flag) {
+  return (static_cast<u16>(value) & static_cast<u16>(flag)) != 0;
 }
 
 namespace core {
@@ -112,17 +145,15 @@ inline constexpr std::string_view to_string(OrderType order_type) {
 inline constexpr std::string_view to_string(TimeInForce tif) {
   using enum TimeInForce;
   switch (tif) {
-  case DayOrder:
+  case Day:
     return "DayOrder";
-  case GoodTillCancelled:
+  case GTC:
     return "GoodTillCancelled";
-  case ImmediateOrCancel:
+  case IOC:
     return "ImmediateOrCancel";
-  case FillOrKill:
+  case FOK:
     return "FillOrKill";
-  case FillAndKill:
-    return "FillAndKill";
-  case GoodTillDate:
+  case GTD:
     return "GoodTillDate";
   default:
     return "";
@@ -163,12 +194,11 @@ inline constexpr std::string_view to_string(MatchType matchType) {
   }
 }
 
-inline static Time GetCurrentTime() {
-  return std::chrono::duration_cast<Time>(
-      std::chrono::steady_clock::now().time_since_epoch());
+inline static TimeNs GetCurrentTime() {
+  return std::chrono::steady_clock::now().time_since_epoch().count();
 }
 
-inline std::string ReadFile(const std::filesystem::path &path) {
+inline std::string ReadFromFile(const std::filesystem::path &path) {
   std::ifstream in(path, std::ios::in | std::ios::binary | std::ios::ate);
 
   if (!in)

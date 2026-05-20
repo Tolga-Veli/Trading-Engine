@@ -4,7 +4,7 @@
 #include "globals.hpp"
 
 namespace ob {
-class Order {
+class alignas(64) Order {
 public:
   Order() = delete;
   Order(OrderID orderID, ClientID clientID, Price price, Quantity quantity,
@@ -13,8 +13,8 @@ public:
       : m_OrderID(orderID), m_ClientID(clientID),
         m_Timestamp(core::GetCurrentTime()), m_Price(price),
         m_IntialQuantity(quantity), m_RemainingQuantity(quantity), m_Side(side),
-        m_OrderType(order_type), m_TimeInForce(tif), m_MatchType(match_type),
-        m_Flags(flag) {}
+        m_OrderType(order_type), m_TimeInForce(tif), m_Flags(flag),
+        m_MatchType(match_type) {}
 
   ~Order() noexcept = default;
 
@@ -31,12 +31,13 @@ public:
   Quantity GetFilledQuantity() const noexcept {
     return m_IntialQuantity - m_RemainingQuantity;
   }
-  Time GetTimestamp() const noexcept { return m_Timestamp; }
+  TimeNs GetTimestamp() const noexcept { return m_Timestamp; }
   Side GetSide() const noexcept { return m_Side; }
   OrderType GetOrderType() const noexcept { return m_OrderType; }
   TimeInForce GetTimeInForce() const noexcept { return m_TimeInForce; }
-  MatchType GetMatchType() const noexcept { return m_MatchType; }
   Flags GetFlags() const noexcept { return m_Flags; }
+  MatchType GetMatchType() const noexcept { return m_MatchType; }
+
   bool isFilled() const noexcept { return m_RemainingQuantity == 0; }
 
   void ModifyOrder(Price new_price, Quantity new_quantity) noexcept {
@@ -74,24 +75,36 @@ public:
   void log() const {
     HERMES_INFO("Order ID: {}, ClientID: {}, Price: {}, InitialQuantity: {}, "
                 "RemainingQuantity: {}, Time: {}, Side: {}, Order Type: {}, "
-                "Time in Force: {}, Match Type: {}, Flags:{} \n",
+                "Time in Force: {},  Flags:{} \n",
                 m_OrderID, m_ClientID, m_Price, m_IntialQuantity,
                 m_RemainingQuantity, m_Timestamp, core::to_string(m_Side),
                 core::to_string(m_OrderType), core::to_string(m_TimeInForce),
-                core::to_string(m_MatchType), core::to_string(m_Flags));
+                core::to_string(m_Flags));
   }
 
 private:
+  // 8-Byte Fields (48 Bytes Total)
   OrderID m_OrderID;
   ClientID m_ClientID;
   Price m_Price;
   Quantity m_IntialQuantity, m_RemainingQuantity;
-  Time m_Timestamp;
+  TimeNs m_Timestamp;
 
+  // 2-Byte Field (4 Bytes Total)
+  Flags m_Flags;
+  ExecutionInstructions m_ExecInst;
+
+  // 1-Byte Fields (5 Bytes Total)
   Side m_Side;
   OrderType m_OrderType;
   TimeInForce m_TimeInForce;
   MatchType m_MatchType;
-  Flags m_Flags;
+
+  // Explicit Zero-Padding (9 Bytes)
+  // Pads out the remaining bytes so the total size is 64
+  u8 m_Padding[8]{};
 };
+
+static_assert(sizeof(Order) == 64, "Order size unexcpected");
+static_assert(std::is_trivially_copyable_v<Order>);
 } // namespace ob
