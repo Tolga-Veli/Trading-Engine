@@ -1,10 +1,10 @@
-# Hermes-Orderbook
-A fast, single-threaded(for now) **C++ limit orderbook** implementing **price–time priority matching**, with a simple terminal-based visualization and order flow simulation with random orders.
+# Trading-Engine
+A fast, **C++23** trading engine implementing **price–time priority matching**, with a simple terminal-based visualization and order flow simulation with random orders.
 ![Live orderbook simulation](assets/orderbook.gif)
 
 
 ## Overview
-Hermes-Orderbook implements the **core mechanics of a limit orderbook**.  
+The trading engine implements the **core mechanics of a limit orderbook**.  
 The project dives into **data structure design, algorithmic complexity, and performance trade-offs** without any external dependencies.
 
 ## Features
